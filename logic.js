@@ -92,20 +92,29 @@ class LogicEngine {
     }
 
     tokenize(input) {
-        const regex = /\s*(=>|<=>|~|&|\||\(|\)|[a-zA-Z0-9]+)\s*/g;
+        // Broad support for mathematical and programming logic symbols
+        const regex = /\s*(=>|<=>|->|<->|~|&|\||&&|\|\||!|¬|∧|∨|→|↔|⊃|≡|NOT|AND|OR|IMPLIES|IFF|\(|\)|[a-zA-Z0-9]+)\s*/gi;
         const tokens = [];
         let match;
         while ((match = regex.exec(input)) !== null) {
-            const val = match[1];
-            if (val === '=>') tokens.push({ type: 'implies', value: val });
-            else if (val === '<=>') tokens.push({ type: 'iff', value: val });
-            else if (val === '~') tokens.push({ type: 'not', value: val });
-            else if (val === '&') tokens.push({ type: 'and', value: val });
-            else if (val === '|') tokens.push({ type: 'or', value: val });
-            else if (val === '(') tokens.push({ type: 'lparen', value: val });
-            else if (val === ')') tokens.push({ type: 'rparen', value: val });
-            else tokens.push({ type: 'variable', value: val });
+            const rawVal = match[1];
+            const val = rawVal.toUpperCase();
+            
+            if (val === '=>' || val === '→' || val === '->' || val === '⊃' || val === 'IMPLIES') 
+                tokens.push({ type: 'implies', value: '=>' });
+            else if (val === '<=>' || val === '↔' || val === '<->' || val === '≡' || val === 'IFF') 
+                tokens.push({ type: 'iff', value: '<=>' });
+            else if (val === '~' || val === '¬' || val === '!' || val === 'NOT') 
+                tokens.push({ type: 'not', value: '~' });
+            else if (val === '&' || val === '&&' || val === '∧' || val === 'AND') 
+                tokens.push({ type: 'and', value: '&' });
+            else if (val === '|' || val === '||' || val === '∨' || val === 'OR') 
+                tokens.push({ type: 'or', value: '|' });
+            else if (val === '(') tokens.push({ type: 'lparen', value: '(' });
+            else if (val === ')') tokens.push({ type: 'rparen', value: ')' });
+            else tokens.push({ type: 'variable', value: rawVal });
         }
+        
         return tokens;
     }
 
@@ -113,7 +122,7 @@ class LogicEngine {
     toCNF(node, logLabel = "") {
         this.cnfSteps = [];
         let current = node;
-        
+
         // 1. Eliminate implications and iff
         current = this.eliminateImplications(current);
         this.logCNFStep("Eliminate Implications", current);
@@ -136,7 +145,7 @@ class LogicEngine {
     eliminateImplications(node) {
         if (node.type === 'variable') return node;
         const children = node.children.map(c => this.eliminateImplications(c));
-        
+
         if (node.type === 'implies') {
             // A => B  is  ~A | B
             return new LogicNode('or', null, [
@@ -157,7 +166,7 @@ class LogicEngine {
 
     moveNotsInward(node) {
         if (node.type === 'variable') return node;
-        
+
         if (node.type === 'not') {
             const child = node.children[0];
             if (child.type === 'not') { // ~~A = A
@@ -177,14 +186,14 @@ class LogicEngine {
             }
             return new LogicNode('not', null, [this.moveNotsInward(child)]);
         }
-        
+
         return new LogicNode(node.type, node.value, node.children.map(c => this.moveNotsInward(c)));
     }
 
     distribute(node) {
         if (node.type === 'variable' || node.type === 'not') return node;
         const children = node.children.map(c => this.distribute(c));
-        
+
         if (node.type === 'or') {
             const [L, R] = children;
             if (L.type === 'and') { // (A & B) | C = (A | C) & (B | C)
@@ -201,7 +210,7 @@ class LogicEngine {
             }
             return new LogicNode('or', null, [L, R]);
         }
-        
+
         return new LogicNode(node.type, node.value, children);
     }
 
@@ -238,7 +247,7 @@ class LogicEngine {
     resolve(premises, conclusion) {
         const resolutionSteps = [];
         let clauses = [];
-        
+
         // Add premises to clauses
         premises.forEach(p => {
             const node = this.parse(p);
@@ -324,10 +333,10 @@ class LogicEngine {
         const variables = new Set();
         allExprs.forEach(node => this.extractVariables(node, variables));
         const varList = Array.from(variables).sort();
-        
+
         const rows = [];
         const numRows = Math.pow(2, varList.length);
-        
+
         for (let i = numRows - 1; i >= 0; i--) {
             const values = {};
             varList.forEach((v, idx) => {
@@ -343,7 +352,7 @@ class LogicEngine {
             row.conclusion = this.evaluate(this.parse(conclusion), values);
             rows.push(row);
         }
-        
+
         return { variables: varList, rows };
     }
 

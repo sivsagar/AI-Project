@@ -1,21 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Logic Theorem Solver</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@400;500&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
+
 <body>
+    <div class="bg-decor"></div>
     <div class="app-container">
         <header>
-            <div class="logo">
-                <i data-lucide="cpu" class="icon-blue"></i>
-                <h1>AI Logic <span>Theorem Solver</span></h1>
+            <div class="header-top">
+                <div class="logo">
+                    <i data-lucide="cpu" class="icon-blue"></i>
+                    <h1>AI Logic <span>Theorem Solver</span></h1>
+                </div>
+                <button id="theme-toggle" class="btn btn-ghost theme-btn" title="Toggle Theme">
+                    <i data-lucide="sun" id="theme-icon"></i>
+                </button>
             </div>
             <p class="subtitle">Intelligent formal logic reasoning and resolution engine</p>
         </header>
@@ -26,16 +36,31 @@
                     <i data-lucide="edit-3"></i>
                     <h2>Theorem Submission</h2>
                 </div>
-                
+
+                <div class="symbol-toolbar">
+                    <button class="symbol-btn" data-symbol="¬" title="NOT">¬</button>
+                    <button class="symbol-btn" data-symbol="∧" title="AND">∧</button>
+                    <button class="symbol-btn" data-symbol="∨" title="OR">∨</button>
+                    <button class="symbol-btn" data-symbol="→" title="IMPLIES">→</button>
+                    <button class="symbol-btn" data-symbol="↔" title="IFF">↔</button>
+                    <button class="symbol-btn" data-symbol="(" title="Left Parenthesis">(</button>
+                    <button class="symbol-btn" data-symbol=")" title="Right Parenthesis">)</button>
+                </div>
+
                 <div class="input-group">
                     <label for="premises">Premises (one per line)</label>
-                    <textarea id="premises" placeholder="Example:&#10;P => Q&#10;P" rows="4"></textarea>
-                    <div class="syntax-hint">Operators: & (AND), | (OR), ~ (NOT), => (IMPLIES), <=> (IFF)</div>
+                    <textarea id="premises" placeholder="Example:&#10;P → Q&#10;P" rows="4"></textarea>
+                    <div class="syntax-hint">Click symbols above or type directly using standard notation</div>
                 </div>
 
                 <div class="input-group">
                     <label for="conclusion">Conclusion / Query</label>
                     <input type="text" id="conclusion" placeholder="Example: Q">
+                </div>
+
+                <div id="error-box" class="error-msg hidden">
+                    <i data-lucide="alert-circle"></i>
+                    <span id="error-text"></span>
                 </div>
 
                 <div class="actions">
@@ -91,7 +116,7 @@
         </main>
 
         <footer>
-            <p>&copy; 2024 AI Logic Theorem Solver | Developed by Antigravity</p>
+            <p>&copy; 2026 AI Logic Theorem Solver | Developed by Soumyadip and Sagar</p>
         </footer>
     </div>
 
@@ -101,4 +126,5 @@
         lucide.createIcons();
     </script>
 </body>
+
 </html>

@@ -4,49 +4,81 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     const engine = new window.LogicEngine();
-    
+
     // Elements
     const premisesInput = document.getElementById('premises');
     const conclusionInput = document.getElementById('conclusion');
     const solveBtn = document.getElementById('solve-btn');
     const exampleBtn = document.getElementById('example-btn');
     const clearBtn = document.getElementById('clear-btn');
-    
+    const themeToggle = document.getElementById('theme-toggle');
+    const themeIcon = document.getElementById('theme-icon');
+    const errorBox = document.getElementById('error-box');
+    const errorText = document.getElementById('error-text');
     const resultSection = document.getElementById('result-section');
     const statusBadge = document.getElementById('status-badge');
     const resultTitle = document.getElementById('result-title');
     const cnfStepsContainer = document.getElementById('cnf-steps');
     const resolutionStepsContainer = document.getElementById('resolution-steps');
     const ttElement = document.getElementById('tt-element');
-    
+    const body = document.body;
+
+    const symbolBtns = document.querySelectorAll('.symbol-btn');
     const tabBtns = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
+
+    // State
+    let lastFocusedInput = premisesInput;
+    let exampleIdx = 0;
 
     // Examples
     const examples = [
         {
-            premises: "P => Q\nP",
+            premises: "P → Q\nP",
             conclusion: "Q",
             desc: "Modus Ponens"
         },
         {
-            premises: "P => Q\n~Q",
-            conclusion: "~P",
+            premises: "P → Q\n¬Q",
+            conclusion: "¬P",
             desc: "Modus Tollens"
         },
         {
-            premises: "P | Q\n~P",
+            premises: "P ∨ Q\n¬P",
             conclusion: "Q",
             desc: "Disjunctive Syllogism"
         },
         {
-            premises: "R => S\nS => T",
-            conclusion: "R => T",
+            premises: "R → S\nS → T",
+            conclusion: "R → T",
             desc: "Hypothetical Syllogism"
+        },
+        {
+            premises: "P ↔ Q",
+            conclusion: "(P ∧ Q) ∨ (¬P ∧ ¬Q)",
+            desc: "IFF Expansion"
+        },
+        {
+            premises: "¬(P ∧ Q)",
+            conclusion: "¬P ∨ ¬Q",
+            desc: "De Morgan's Law"
+        },
+        {
+            premises: "A → B\nB → C\nC → D",
+            conclusion: "A → D",
+            desc: "Transitive Chain"
+        },
+        {
+            premises: "A ∧ (B ∨ C)",
+            conclusion: "(A ∧ B) ∨ (A ∧ C)",
+            desc: "Distribution Law"
+        },
+        {
+            premises: "P → Q",
+            conclusion: "¬Q → ¬P",
+            desc: "Contrapositive"
         }
     ];
-
-    let exampleIdx = 0;
 
     // --- Tab Logic ---
     tabBtns.forEach(btn => {
@@ -60,21 +92,83 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- Actions ---
+    // --- Theme Logic ---
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    if (savedTheme === 'light') {
+        body.classList.add('light-theme');
+        themeIcon.setAttribute('data-lucide', 'moon');
+        lucide.createIcons();
+    }
+
+    themeToggle.addEventListener('click', () => {
+        const isLight = body.classList.toggle('light-theme');
+        const newTheme = isLight ? 'light' : 'dark';
+        localStorage.setItem('theme', newTheme);
+        themeIcon.setAttribute('data-lucide', isLight ? 'moon' : 'sun');
+        lucide.createIcons();
+    });
+
+    // --- Symbol Keyboard Logic ---
+    [premisesInput, conclusionInput].forEach(input => {
+        input.addEventListener('focus', () => {
+            lastFocusedInput = input;
+        });
+    });
+
+    symbolBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const symbol = btn.getAttribute('data-symbol');
+            const start = lastFocusedInput.selectionStart;
+            const end = lastFocusedInput.selectionEnd;
+            const text = lastFocusedInput.value;
+            
+            lastFocusedInput.value = text.substring(0, start) + symbol + text.substring(end);
+            lastFocusedInput.focus();
+            
+            const newCursor = start + symbol.length;
+            lastFocusedInput.setSelectionRange(newCursor, newCursor);
+        });
+    });
+
+    // --- Core Actions ---
+    function showError(msg) {
+        if (!msg) {
+            errorBox.classList.add('hidden');
+            return;
+        }
+        errorText.textContent = msg;
+        errorBox.classList.remove('hidden');
+        lucide.createIcons();
+    }
+
     solveBtn.addEventListener('click', () => {
+        showError(null);
         const pLines = premisesInput.value.split('\n').filter(l => l.trim().length > 0);
         const conclusion = conclusionInput.value.trim();
 
         if (pLines.length === 0 || !conclusion) {
-            alert("Please enter both premises and a conclusion.");
+            showError("Please enter both premises and a conclusion.");
             return;
         }
 
-        try {
-            solve(pLines, conclusion);
-        } catch (err) {
-            alert("Error parsing logic: " + err.message);
-        }
+        solveBtn.disabled = true;
+        const originalText = solveBtn.innerHTML;
+        solveBtn.innerHTML = '<i data-lucide="loader" class="animate-spin"></i> Processing...';
+        lucide.createIcons();
+
+        setTimeout(() => {
+            try {
+                solve(pLines, conclusion);
+            } catch (err) {
+                showError("Logic Error: " + err.message);
+                resultSection.classList.add('hidden');
+            } finally {
+                solveBtn.disabled = false;
+                solveBtn.innerHTML = originalText;
+                lucide.createIcons();
+            }
+        }, 100);
     });
 
     exampleBtn.addEventListener('click', () => {
@@ -82,12 +176,14 @@ document.addEventListener('DOMContentLoaded', () => {
         premisesInput.value = ex.premises;
         conclusionInput.value = ex.conclusion;
         exampleIdx = (exampleIdx + 1) % examples.length;
+        showError(null);
     });
 
     clearBtn.addEventListener('click', () => {
         premisesInput.value = '';
         conclusionInput.value = '';
         resultSection.classList.add('hidden');
+        showError(null);
     });
 
     function solve(premises, conclusion) {
@@ -100,18 +196,16 @@ document.addEventListener('DOMContentLoaded', () => {
         resolutionStepsContainer.innerHTML = '';
         ttElement.innerHTML = '';
 
-        // Capture CNF steps for each premise
         premises.forEach((p, idx) => {
             try {
                 const node = engine.parse(p);
                 engine.toCNF(node);
                 renderCNFSteps(`Premise ${idx + 1}: ${p}`, engine.cnfSteps);
             } catch (e) {
-                 console.error(e);
+                console.error(e);
             }
         });
 
-        // Conclusion negation CNF
         try {
             const negNode = engine.parse(`~(${conclusion})`);
             engine.toCNF(negNode);
@@ -120,7 +214,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error(e);
         }
 
-        // Run Resolution
         const { proved, resolutionSteps } = engine.resolve(premises, conclusion);
         
         if (proved) {
@@ -133,25 +226,22 @@ document.addEventListener('DOMContentLoaded', () => {
             resultTitle.textContent = 'Resolution completed without contradiction';
         }
 
-        resolutionSteps.forEach(step => {
-            const div = document.createElement('div');
-            div.className = 'step-item';
-            div.innerHTML = `
-                <span class="step-label">Resolved ${step.c1} and ${step.c2}</span>
-                <div class="step-content">Yields: ${step.res}</div>
-            `;
-            resolutionStepsContainer.appendChild(div);
-        });
-
         if (resolutionSteps.length === 0) {
             resolutionStepsContainer.innerHTML = '<div class="step-item">No resolution steps possible or needed.</div>';
+        } else {
+            resolutionSteps.forEach(step => {
+                const div = document.createElement('div');
+                div.className = 'step-item';
+                div.innerHTML = `
+                    <span class="step-label">Resolved ${step.c1} and ${step.c2}</span>
+                    <div class="step-content">Yields: ${step.res}</div>
+                `;
+                resolutionStepsContainer.appendChild(div);
+            });
         }
 
-        // Truth Table
         const tt = engine.generateTruthTable(premises, conclusion);
         renderTruthTable(tt);
-
-        // Smooth scroll to results
         resultSection.scrollIntoView({ behavior: 'smooth' });
     }
 
@@ -160,7 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
         header.textContent = title;
         header.style.marginTop = '1rem';
         header.style.marginBottom = '0.5rem';
-        header.style.color = '#fff';
+        header.style.color = 'var(--text-main)';
         cnfStepsContainer.appendChild(header);
 
         steps.forEach(step => {
@@ -175,14 +265,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTruthTable(tt) {
-        // Create header
         let headRow = '<tr>';
         tt.variables.forEach(v => headRow += `<th>${v}</th>`);
         headRow += '<th>Premises Met</th>';
         headRow += '<th>Conclusion</th>';
         headRow += '</tr>';
 
-        // Create body
         let bodyHtml = '';
         tt.rows.forEach(row => {
             let rowHtml = '<tr>';
