@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Logic Theorem Solver</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="logo">
+                <i data-lucide="cpu" class="icon-blue"></i>
+                <h1>AI Logic <span>Theorem Solver</span></h1>
+            </div>
+            <p class="subtitle">Intelligent formal logic reasoning and resolution engine</p>
+        </header>
+
+        <main>
+            <section class="input-area card">
+                <div class="card-header">
+                    <i data-lucide="edit-3"></i>
+                    <h2>Theorem Submission</h2>
+                </div>
+                
+                <div class="input-group">
+                    <label for="premises">Premises (one per line)</label>
+                    <textarea id="premises" placeholder="Example:&#10;P => Q&#10;P" rows="4"></textarea>
+                    <div class="syntax-hint">Operators: & (AND), | (OR), ~ (NOT), => (IMPLIES), <=> (IFF)</div>
+                </div>
+
+                <div class="input-group">
+                    <label for="conclusion">Conclusion / Query</label>
+                    <input type="text" id="conclusion" placeholder="Example: Q">
+                </div>
+
+                <div class="actions">
+                    <button id="solve-btn" class="btn btn-primary">
+                        <i data-lucide="play"></i>
+                        Solve Theorem
+                    </button>
+                    <button id="example-btn" class="btn btn-secondary">
+                        <i data-lucide="lightbulb"></i>
+                        Load Example
+                    </button>
+                    <button id="clear-btn" class="btn btn-ghost">
+                        <i data-lucide="trash-2"></i>
+                        Clear
+                    </button>
+                </div>
+            </section>
+
+            <section id="result-section" class="result-area hidden">
+                <div class="result-header card">
+                    <div id="status-badge" class="badge">Processing...</div>
+                    <h2 id="result-title">Proving Theorem...</h2>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="explanation">
+                        <i data-lucide="book-open"></i> Reasoning Process
+                    </button>
+                    <button class="tab-btn" data-tab="truth-table">
+                        <i data-lucide="table"></i> Truth Table
+                    </button>
+                </div>
+
+                <div class="tab-content" id="explanation">
+                    <div class="explanation-steps">
+                        <div class="step-card">
+                            <h3><i data-lucide="shuffle"></i> CNF Conversion</h3>
+                            <div id="cnf-steps" class="step-details"></div>
+                        </div>
+                        <div class="step-card">
+                            <h3><i data-lucide="git-branch"></i> Resolution Steps</h3>
+                            <div id="resolution-steps" class="step-details"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content hidden" id="truth-table">
+                    <div class="table-container">
+                        <table id="tt-element"></table>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 AI Logic Theorem Solver | Developed by Antigravity</p>
+        </footer>
+    </div>
+
+    <script src="logic.js"></script>
+    <script src="ui.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
