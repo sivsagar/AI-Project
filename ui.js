@@ -1,289 +1,256 @@
 /**
- * AI Logic Theorem Solver UI Controller
+ * AI Logic Theorem Solver — UI Controller
  */
 
 document.addEventListener('DOMContentLoaded', () => {
     const engine = new window.LogicEngine();
 
-    // Elements
-    const premisesInput = document.getElementById('premises');
-    const conclusionInput = document.getElementById('conclusion');
-    const solveBtn = document.getElementById('solve-btn');
-    const exampleBtn = document.getElementById('example-btn');
-    const clearBtn = document.getElementById('clear-btn');
+    // === Global Elements ===
     const themeToggle = document.getElementById('theme-toggle');
     const themeIcon = document.getElementById('theme-icon');
-    const errorBox = document.getElementById('error-box');
-    const errorText = document.getElementById('error-text');
-    const resultSection = document.getElementById('result-section');
-    const statusBadge = document.getElementById('status-badge');
-    const resultTitle = document.getElementById('result-title');
-    const cnfStepsContainer = document.getElementById('cnf-steps');
-    const resolutionStepsContainer = document.getElementById('resolution-steps');
-    const ttElement = document.getElementById('tt-element');
     const body = document.body;
 
-    const symbolBtns = document.querySelectorAll('.symbol-btn');
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
+    // === Module & Tab Switching ===
+    const moduleBtns = document.querySelectorAll('.module-btn');
+    const moduleSections = document.querySelectorAll('.module-section');
+    const subTabs = document.querySelectorAll('.sub-tab');
+    const plTabPanes = document.querySelectorAll('.pl-tab-pane');
 
-    // State
-    let lastFocusedInput = premisesInput;
-    let exampleIdx = 0;
-
-    // Examples
-    const examples = [
-        {
-            premises: "P → Q\nP",
-            conclusion: "Q",
-            desc: "Modus Ponens"
-        },
-        {
-            premises: "P → Q\n¬Q",
-            conclusion: "¬P",
-            desc: "Modus Tollens"
-        },
-        {
-            premises: "P ∨ Q\n¬P",
-            conclusion: "Q",
-            desc: "Disjunctive Syllogism"
-        },
-        {
-            premises: "R → S\nS → T",
-            conclusion: "R → T",
-            desc: "Hypothetical Syllogism"
-        },
-        {
-            premises: "P ↔ Q",
-            conclusion: "(P ∧ Q) ∨ (¬P ∧ ¬Q)",
-            desc: "IFF Expansion"
-        },
-        {
-            premises: "¬(P ∧ Q)",
-            conclusion: "¬P ∨ ¬Q",
-            desc: "De Morgan's Law"
-        },
-        {
-            premises: "A → B\nB → C\nC → D",
-            conclusion: "A → D",
-            desc: "Transitive Chain"
-        },
-        {
-            premises: "A ∧ (B ∨ C)",
-            conclusion: "(A ∧ B) ∨ (A ∧ C)",
-            desc: "Distribution Law"
-        },
-        {
-            premises: "P → Q",
-            conclusion: "¬Q → ¬P",
-            desc: "Contrapositive"
-        }
-    ];
-
-    // --- Tab Logic ---
-    tabBtns.forEach(btn => {
+    moduleBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            const tabId = btn.getAttribute('data-tab');
-            tabBtns.forEach(b => b.classList.remove('active'));
-            tabContents.forEach(c => c.classList.add('hidden'));
-            
+            const modId = btn.getAttribute('data-module');
+            moduleBtns.forEach(b => b.classList.remove('active'));
+            moduleSections.forEach(s => s.classList.add('hidden'));
             btn.classList.add('active');
-            document.getElementById(tabId).classList.remove('hidden');
+            document.getElementById(`${modId}-module`).classList.remove('hidden');
         });
     });
 
-    // --- Theme Logic ---
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    if (savedTheme === 'light') {
-        body.classList.add('light-theme');
-        themeIcon.setAttribute('data-lucide', 'moon');
-        lucide.createIcons();
-    }
+    subTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const paneId = tab.getAttribute('data-pl-tab');
+            subTabs.forEach(t => t.classList.remove('active'));
+            plTabPanes.forEach(p => p.classList.add('hidden'));
+            tab.classList.add('active');
+            document.getElementById(`pl-tab-${paneId}`).classList.remove('hidden');
+        });
+    });
 
+    // === Theme Toggle ===
     themeToggle.addEventListener('click', () => {
-        const isLight = body.classList.toggle('light-theme');
-        const newTheme = isLight ? 'light' : 'dark';
-        localStorage.setItem('theme', newTheme);
-        themeIcon.setAttribute('data-lucide', isLight ? 'moon' : 'sun');
-        lucide.createIcons();
+        const isDark = body.classList.toggle('light-theme');
+        themeIcon.textContent = body.classList.contains('light-theme') ? '🌙' : '☀️';
     });
 
-    // --- Symbol Keyboard Logic ---
-    [premisesInput, conclusionInput].forEach(input => {
-        input.addEventListener('focus', () => {
-            lastFocusedInput = input;
+    // === Symbol Toolbars ===
+    document.querySelectorAll('.sym-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const sym = btn.getAttribute('data-sym');
+            const targetId = btn.closest('.module-section').id === 'pl-module' 
+                ? document.querySelector('.pl-tab-pane:not(.hidden) input, .pl-tab-pane:not(.hidden) textarea').id
+                : 'fol-premises';
+            const input = document.getElementById(targetId);
+            if (input) {
+                const start = input.selectionStart;
+                const end = input.selectionEnd;
+                input.value = input.value.substring(0, start) + sym + input.value.substring(end);
+                input.focus();
+                input.setSelectionRange(start + sym.length, start + sym.length);
+            }
         });
     });
 
-    symbolBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const symbol = btn.getAttribute('data-symbol');
-            const start = lastFocusedInput.selectionStart;
-            const end = lastFocusedInput.selectionEnd;
-            const text = lastFocusedInput.value;
-            
-            lastFocusedInput.value = text.substring(0, start) + symbol + text.substring(end);
-            lastFocusedInput.focus();
-            
-            const newCursor = start + symbol.length;
-            lastFocusedInput.setSelectionRange(newCursor, newCursor);
-        });
-    });
-
-    // --- Core Actions ---
-    function showError(msg) {
-        if (!msg) {
-            errorBox.classList.add('hidden');
-            return;
+    // === Helper: Render Output ===
+    function renderOutput(containerId, content, isTable = false) {
+        const container = document.getElementById(containerId);
+        container.classList.remove('hidden');
+        if (isTable) {
+            container.innerHTML = `<div class="table-container"><table>${content}</table></div>`;
+        } else {
+            container.innerHTML = content;
         }
-        errorText.textContent = msg;
-        errorBox.classList.remove('hidden');
-        lucide.createIcons();
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    solveBtn.addEventListener('click', () => {
-        showError(null);
-        const pLines = premisesInput.value.split('\n').filter(l => l.trim().length > 0);
-        const conclusion = conclusionInput.value.trim();
+    // === 1. Truth Table Generator ===
+    const ttInp = document.getElementById('tt-expr');
+    const ttSolve = document.getElementById('tt-solve-btn');
+    const ttOutput = document.getElementById('tt-output');
 
-        if (pLines.length === 0 || !conclusion) {
-            showError("Please enter both premises and a conclusion.");
-            return;
-        }
-
-        solveBtn.disabled = true;
-        const originalText = solveBtn.innerHTML;
-        solveBtn.innerHTML = '<i data-lucide="loader" class="animate-spin"></i> Processing...';
-        lucide.createIcons();
-
-        setTimeout(() => {
-            try {
-                solve(pLines, conclusion);
-            } catch (err) {
-                showError("Logic Error: " + err.message);
-                resultSection.classList.add('hidden');
-            } finally {
-                solveBtn.disabled = false;
-                solveBtn.innerHTML = originalText;
-                lucide.createIcons();
-            }
-        }, 100);
-    });
-
-    exampleBtn.addEventListener('click', () => {
-        const ex = examples[exampleIdx];
-        premisesInput.value = ex.premises;
-        conclusionInput.value = ex.conclusion;
-        exampleIdx = (exampleIdx + 1) % examples.length;
-        showError(null);
-    });
-
-    clearBtn.addEventListener('click', () => {
-        premisesInput.value = '';
-        conclusionInput.value = '';
-        resultSection.classList.add('hidden');
-        showError(null);
-    });
-
-    function solve(premises, conclusion) {
-        resultSection.classList.remove('hidden');
-        statusBadge.className = 'badge badge-processing';
-        statusBadge.textContent = 'Analyzing...';
-        resultTitle.textContent = 'Processing logical inference...';
-        
-        cnfStepsContainer.innerHTML = '';
-        resolutionStepsContainer.innerHTML = '';
-        ttElement.innerHTML = '';
-
-        premises.forEach((p, idx) => {
-            try {
-                const node = engine.parse(p);
-                engine.toCNF(node);
-                renderCNFSteps(`Premise ${idx + 1}: ${p}`, engine.cnfSteps);
-            } catch (e) {
-                console.error(e);
-            }
-        });
-
+    ttSolve.addEventListener('click', () => {
         try {
-            const negNode = engine.parse(`~(${conclusion})`);
-            engine.toCNF(negNode);
-            renderCNFSteps(`Negated Conclusion: ~(${conclusion})`, engine.cnfSteps);
+            const expr = ttInp.value.trim();
+            if (!expr) return;
+            const tt = engine.generateTruthTable([], expr);
+            
+            let html = '<thead><tr>';
+            tt.variables.forEach(v => html += `<th class="var-col">${v}</th>`);
+            html += `<th class="conclusion-col">${tt.conclusion}</th></tr></thead><tbody>`;
+            
+            tt.rows.forEach(row => {
+                html += '<tr>';
+                tt.variables.forEach(v => {
+                    const val = row.values[v];
+                    html += `<td class="${val ? 'cell-true' : 'cell-false'}">${val ? 'T' : 'F'}</td>`;
+                });
+                html += `<td class="conclusion-col ${row.conclusion ? 'cell-true' : 'cell-false'}">${row.conclusion ? 'T' : 'F'}</td></tr>`;
+            });
+            html += '</tbody>';
+            renderOutput('tt-output', html, true);
         } catch (e) {
-            console.error(e);
+            renderOutput('tt-output', `<div class="error-msg">Error: ${e.message}</div>`);
         }
+    });
 
-        const { proved, resolutionSteps } = engine.resolve(premises, conclusion);
-        
-        if (proved) {
-            statusBadge.className = 'badge badge-success';
-            statusBadge.textContent = 'Proved';
-            resultTitle.textContent = 'Theorem holds via contradiction (Resolution Success)';
-        } else {
-            statusBadge.className = 'badge badge-error';
-            statusBadge.textContent = 'Not Proved';
-            resultTitle.textContent = 'Resolution completed without contradiction';
-        }
+    // === 2. Expression Simplifier ===
+    const simpInp = document.getElementById('simp-expr');
+    const simpSolve = document.getElementById('simp-solve-btn');
 
-        if (resolutionSteps.length === 0) {
-            resolutionStepsContainer.innerHTML = '<div class="step-item">No resolution steps possible or needed.</div>';
-        } else {
-            resolutionSteps.forEach(step => {
-                const div = document.createElement('div');
-                div.className = 'step-item';
-                div.innerHTML = `
-                    <span class="step-label">Resolved ${step.c1} and ${step.c2}</span>
-                    <div class="step-content">Yields: ${step.res}</div>
-                `;
-                resolutionStepsContainer.appendChild(div);
+    simpSolve.addEventListener('click', () => {
+        try {
+            const node = engine.parse(simpInp.value);
+            const { result, steps } = engine.simplify(node);
+            
+            let html = '<div class="explanation-steps">';
+            steps.forEach((step, i) => {
+                html += `
+                    <div class="step-card">
+                        <h3>Step ${i}: ${step.rule}</h3>
+                        <div class="step-item">
+                            <span class="step-content">${step.result}</span>
+                        </div>
+                    </div>`;
             });
+            html += `</div><div class="card" style="margin-top:1rem; border-color:var(--success);">
+                        <strong>Simplified Result:</strong> <code style="font-size:1.2rem; color:var(--success);">${result}</code>
+                     </div>`;
+            renderOutput('simp-output', html);
+        } catch (e) {
+            renderOutput('simp-output', `<div class="error-msg">Error: ${e.message}</div>`);
         }
+    });
 
-        const tt = engine.generateTruthTable(premises, conclusion);
-        renderTruthTable(tt);
-        resultSection.scrollIntoView({ behavior: 'smooth' });
-    }
+    // === 3. Equivalence Checker ===
+    const eqInp1 = document.getElementById('eq-expr1');
+    const eqInp2 = document.getElementById('eq-expr2');
+    const eqSolve = document.getElementById('eq-solve-btn');
 
-    function renderCNFSteps(title, steps) {
-        const header = document.createElement('h4');
-        header.textContent = title;
-        header.style.marginTop = '1rem';
-        header.style.marginBottom = '0.5rem';
-        header.style.color = 'var(--text-main)';
-        cnfStepsContainer.appendChild(header);
+    eqSolve.addEventListener('click', () => {
+        try {
+            const expr1 = eqInp1.value.trim();
+            const expr2 = eqInp2.value.trim();
+            if (!expr1 || !expr2) return;
 
-        steps.forEach(step => {
-            const div = document.createElement('div');
-            div.className = 'step-item';
-            div.innerHTML = `
-                <span class="step-label">${step.label}</span>
-                <div class="step-content">${step.result}</div>
-            `;
-            cnfStepsContainer.appendChild(div);
-        });
-    }
+            const tt1 = engine.generateTruthTable([], expr1);
+            const tt2 = engine.generateTruthTable([], expr2);
+            
+            // Check if results match for all rows
+            // Note: Simplistic check assuming same variable ordering
+            const equivalent = JSON.stringify(tt1.rows.map(r => r.conclusion)) === JSON.stringify(tt2.rows.map(r => r.conclusion));
+            
+            const html = `
+                <div class="card ${equivalent ? 'badge-success' : 'badge-error'}" style="text-align:center; padding:2rem;">
+                    <h2 style="color:inherit; font-size:2rem;">${equivalent ? '≡ Equivalent' : '≢ Not Equivalent'}</h2>
+                    <p>${equivalent ? 'Both expressions produce identical truth values.' : 'Expressions differ in at least one truth assignment.'}</p>
+                </div>`;
+            renderOutput('eq-output', html);
+        } catch (e) {
+            renderOutput('eq-output', `<div class="error-msg">Error: ${e.message}</div>`);
+        }
+    });
 
-    function renderTruthTable(tt) {
-        let headRow = '<tr>';
-        tt.variables.forEach(v => headRow += `<th>${v}</th>`);
-        headRow += '<th>Premises Met</th>';
-        headRow += '<th>Conclusion</th>';
-        headRow += '</tr>';
+    // === 4. Theorem Prover (Resolution) ===
+    const tpPremises = document.getElementById('tp-premises');
+    const tpConclusion = document.getElementById('tp-conclusion');
+    const tpSolve = document.getElementById('tp-solve-btn');
 
-        let bodyHtml = '';
-        tt.rows.forEach(row => {
-            let rowHtml = '<tr>';
-            tt.variables.forEach(v => {
-                const val = row.values[v];
-                rowHtml += `<td class="${val}">${val ? 'T' : 'F'}</td>`;
+    tpSolve.addEventListener('click', () => {
+        try {
+            const premises = tpPremises.value.split('\n').filter(l => l.trim());
+            const conclusion = tpConclusion.value.trim();
+            const { proved, resolutionSteps } = engine.resolve(premises, conclusion);
+            
+            let html = `<div class="card ${proved ? 'badge-success' : 'badge-error'}" style="margin-bottom:1rem;">
+                            <h2>${proved ? '⊢ Proved' : '⊬ Not Proved'}</h2>
+                        </div>`;
+            
+            html += '<div class="explanation-steps">';
+            resolutionSteps.forEach((step, i) => {
+                html += `
+                    <div class="step-card">
+                        <h3>Resolution Step ${i + 1}</h3>
+                        <div class="step-item">
+                            <span class="step-label">Combine</span>
+                            <div class="step-content">${step.c1} and ${step.c2}</div>
+                        </div>
+                        <div class="step-item">
+                            <span class="step-label">Result</span>
+                            <div class="step-content" style="color:var(--primary-bright)">${step.res}</div>
+                        </div>
+                    </div>`;
             });
-            rowHtml += `<td class="${row.valid}">${row.valid ? 'T' : 'F'}</td>`;
-            rowHtml += `<td class="${row.conclusion}">${row.conclusion ? 'T' : 'F'}</td>`;
-            rowHtml += '</tr>';
-            bodyHtml += rowHtml;
-        });
+            html += '</div>';
+            renderOutput('tp-output', html);
+        } catch (e) {
+            renderOutput('tp-output', `<div class="error-msg">Error: ${e.message}</div>`);
+        }
+    });
 
-        ttElement.innerHTML = `<thead>${headRow}</thead><tbody>${bodyHtml}</tbody>`;
-    }
+    // === 5. FOL Inference Engine ===
+    const folPremises = document.getElementById('fol-premises');
+    const folQuery = document.getElementById('fol-query');
+    const folSolve = document.getElementById('fol-solve-btn');
+
+    folSolve.addEventListener('click', () => {
+        try {
+            const premises = folPremises.value.split('\n').filter(l => l.trim());
+            const query = folQuery.value.trim();
+            const { proved, steps } = engine.folInference(premises, query);
+            
+            let html = `<div class="card ${proved ? 'badge-success' : 'badge-error'}" style="margin-bottom:1rem;">
+                            <h2>${proved ? '✓ Derived' : '✗ Could Not Derive'}</h2>
+                        </div>`;
+            
+            html += '<div class="explanation-steps">';
+            steps.forEach((step, i) => {
+                html += `
+                    <div class="step-card">
+                        <h3>Inference Step ${i + 1}: ${step.rule}</h3>
+                        <div class="step-item">
+                            <span class="step-label">From</span>
+                            <div class="step-content">${step.from}</div>
+                        </div>
+                        <div class="step-item">
+                            <span class="step-label">Derived Fact</span>
+                            <div class="step-content" style="color:var(--primary-bright)">${step.result}</div>
+                        </div>
+                    </div>`;
+            });
+            if (steps.length === 0) {
+                html += `<div class="card">No new facts could be derived using the current rules.</div>`;
+            }
+            html += '</div>';
+            renderOutput('fol-output', html);
+        } catch (e) {
+            renderOutput('fol-output', `<div class="error-msg">Error: ${e.message}</div>`);
+        }
+    });
+
+    // === Example Buttons ===
+    document.getElementById('tt-eg-btn').addEventListener('click', () => { ttInp.value = '(P → Q) ∧ (Q → R)'; });
+    document.getElementById('simp-eg-btn').addEventListener('click', () => { simpInp.value = '¬(¬P ∨ ¬Q)'; });
+    document.getElementById('eq-eg-btn').addEventListener('click', () => { eqInp1.value = 'P → Q'; eqInp2.value = '¬P ∨ Q'; });
+    document.getElementById('tp-eg-btn').addEventListener('click', () => { tpPremises.value = 'P → Q\nP'; tpConclusion.value = 'Q'; });
+    document.getElementById('fol-eg-btn').addEventListener('click', () => { 
+        folPremises.value = '∀x (Human(x) → Mortal(x))\nHuman(Socrates)'; 
+        folQuery.value = 'Mortal(Socrates)'; 
+    });
+
+    // === Clear Buttons ===
+    document.getElementById('tt-clear-btn').addEventListener('click', () => { ttInp.value = ''; ttOutput.classList.add('hidden'); });
+    document.getElementById('simp-clear-btn').addEventListener('click', () => { simpInp.value = ''; document.getElementById('simp-output').classList.add('hidden'); });
+    document.getElementById('eq-clear-btn').addEventListener('click', () => { eqInp1.value = ''; eqInp2.value = ''; document.getElementById('eq-output').classList.add('hidden'); });
+    document.getElementById('tp-clear-btn').addEventListener('click', () => { tpPremises.value = ''; tpConclusion.value = ''; document.getElementById('tp-output').classList.add('hidden'); });
+    document.getElementById('fol-clear-btn').addEventListener('click', () => { folPremises.value = ''; folQuery.value = ''; document.getElementById('fol-output').classList.add('hidden'); });
+
 });

@@ -20,6 +20,17 @@ class LogicNode {
     }
 }
 
+class TableauxNode {
+    constructor(formulas = [], parent = null) {
+        this.formulas = formulas; // Array of {node: LogicNode, origin: string}
+        this.parent = parent;
+        this.children = [];
+        this.closed = false;
+        this.closedBy = null; // [l1, l2]
+        this.literals = new Set();
+    }
+}
+
 class LogicEngine {
     constructor() {
         this.cnfSteps = [];
@@ -353,7 +364,7 @@ class LogicEngine {
             rows.push(row);
         }
 
-        return { variables: varList, rows };
+        return { variables: varList, premises, conclusion, rows };
     }
 
     extractVariables(node, vars) {
@@ -376,6 +387,333 @@ class LogicEngine {
         }
         return false;
     }
+
+    // --- Semantic Tableaux ---
+    generateTableaux(premises, conclusion) {
+        const rootFormulas = [
+            ...premises.map(p => ({ node: this.parse(p), origin: 'Premise' })),
+            { node: new LogicNode('not', null, [this.parse(conclusion)]), origin: 'Negated Conclusion' }
+        ];
+
+        const root = new TableauxNode(rootFormulas);
+        this.expandTableaux(root, new Set());
+        return root;
+    }
+
+    expandTableaux(node, branchLiterals) {
+        // 1. Check for contradictions in current branch
+        const currentLiterals = new Set(branchLiterals);
+        for (const f of node.formulas) {
+            const s = f.node.toString();
+            if (f.node.type === 'variable' || (f.node.type === 'not' && f.node.children[0].type === 'variable')) {
+                // Check contradiction
+                const comp = f.node.type === 'variable' ? `~${s}` : s.substring(1);
+                if (currentLiterals.has(comp)) {
+                    node.closed = true;
+                    node.closedBy = [s, comp];
+                    return;
+                }
+                currentLiterals.add(s);
+            }
+        }
+        node.literals = currentLiterals;
+
+        // 2. Find a formula to decompose
+        let targetIdx = -1;
+        let ruleType = null; // 'alpha' or 'beta'
+
+        for (let i = 0; i < node.formulas.length; i++) {
+            const f = node.formulas[i];
+            const type = this.getTableauxRule(f.node);
+            if (type) {
+                targetIdx = i;
+                ruleType = type;
+                break;
+            }
+        }
+
+        if (targetIdx === -1) {
+            // No more formulas to decompose
+            node.closed = false;
+            return;
+        }
+
+        const target = node.formulas[targetIdx];
+        const remaining = node.formulas.filter((_, idx) => idx !== targetIdx);
+        const results = this.applyTableauxRule(target.node);
+
+        if (ruleType === 'alpha') {
+            // Alpha rule: single branch
+            const newNode = new TableauxNode([...remaining, ...results], node);
+            node.children = [newNode];
+            this.expandTableaux(newNode, currentLiterals);
+            if (newNode.closed) node.closed = true;
+        } else {
+            // Beta rule: branching
+            node.children = results.map(res => new TableauxNode([...remaining, res], node));
+            let allClosed = true;
+            for (const child of node.children) {
+                this.expandTableaux(child, currentLiterals);
+                if (!child.closed) allClosed = false;
+            }
+            if (node.children.length > 0 && allClosed) node.closed = true;
+        }
+    }
+
+    getTableauxRule(node) {
+        if (node.type === 'variable') return null;
+        if (node.type === 'not') {
+            const child = node.children[0];
+            if (child.type === 'variable') return null;
+            if (child.type === 'not') return 'alpha'; // ~~A
+            if (child.type === 'or') return 'alpha';  // ~(A|B) -> ~A, ~B
+            if (child.type === 'implies') return 'alpha'; // ~(A=>B) -> A, ~B
+            if (child.type === 'and') return 'beta';  // ~(A&B) -> ~A | ~B
+            if (child.type === 'iff') return 'beta';  // ~(A<=>B) -> (A&~B) | (~A&B)
+            return 'alpha';
+        }
+        if (node.type === 'and') return 'alpha';
+        if (node.type === 'or') return 'beta';
+        if (node.type === 'implies') return 'beta';
+        if (node.type === 'iff') return 'beta';
+        return null;
+    }
+
+    applyTableauxRule(node) {
+        if (node.type === 'not') {
+            const child = node.children[0];
+            if (child.type === 'not') return [{ node: child.children[0], origin: 'Double Negation' }];
+            if (child.type === 'and') { // ~(A & B) -> ~A | ~B
+                return [
+                    { node: new LogicNode('not', null, [child.children[0]]), origin: 'De Morgan' },
+                    { node: new LogicNode('not', null, [child.children[1]]), origin: 'De Morgan' }
+                ];
+            }
+            if (child.type === 'or') { // ~(A | B) -> ~A, ~B
+                return [
+                    { node: new LogicNode('not', null, [child.children[0]]), origin: 'De Morgan' },
+                    { node: new LogicNode('not', null, [child.children[1]]), origin: 'De Morgan' }
+                ];
+            }
+            if (child.type === 'implies') { // ~(A => B) -> A, ~B
+                return [
+                    { node: child.children[0], origin: 'Negated Implication' },
+                    { node: new LogicNode('not', null, [child.children[1]]), origin: 'Negated Implication' }
+                ];
+            }
+            if (child.type === 'iff') { // ~(A <=> B) -> (A & ~B) | (~A & B)
+                return [
+                    { node: new LogicNode('and', null, [child.children[0], new LogicNode('not', null, [child.children[1]])]), origin: 'Negated IFF' },
+                    { node: new LogicNode('and', null, [new LogicNode('not', null, [child.children[0]]), child.children[1]]), origin: 'Negated IFF' }
+                ];
+            }
+        }
+        if (node.type === 'and') {
+            return [
+                { node: node.children[0], origin: 'Conjunction' },
+                { node: node.children[1], origin: 'Conjunction' }
+            ];
+        }
+        if (node.type === 'or') {
+            return [
+                { node: node.children[0], origin: 'Disjunction' },
+                { node: node.children[1], origin: 'Disjunction' }
+            ];
+        }
+        if (node.type === 'implies') {
+            return [
+                { node: new LogicNode('not', null, [node.children[0]]), origin: 'Implication' },
+                { node: node.children[1], origin: 'Implication' }
+            ];
+        }
+        if (node.type === 'iff') {
+            return [
+                { node: new LogicNode('and', null, [node.children[0], node.children[1]]), origin: 'Equivalence' },
+                { node: new LogicNode('and', null, [new LogicNode('not', null, [node.children[0]]), new LogicNode('not', null, [node.children[1]])]), origin: 'Equivalence' }
+            ];
+        }
+        return [];
+    }
+
+    // --- Simplification ---
+    simplify(node) {
+        let current = node;
+        let changed = true;
+        let steps = [];
+        
+        const logStep = (rule, result) => {
+            const resStr = result.toString();
+            if (steps.length === 0 || steps[steps.length - 1].result !== resStr) {
+                steps.push({ rule, result: resStr });
+            }
+        };
+
+        // Initial state
+        logStep("Original", current);
+
+        while (changed) {
+            changed = false;
+            
+            // 1. Double Negation: ~~A -> A
+            let next = this.applyDoubleNegation(current);
+            if (next.toString() !== current.toString()) {
+                current = next;
+                logStep("Double Negation", current);
+                changed = true;
+            }
+
+            // 2. De Morgan's: ~(A & B) -> ~A | ~B, ~(A | B) -> ~A & ~B
+            next = this.applyDeMorgan(current);
+            if (next.toString() !== current.toString()) {
+                current = next;
+                logStep("De Morgan's Law", current);
+                changed = true;
+            }
+
+            // 3. Identity & Annihilation (Basic T/F rules would go here if we had T/F constants)
+            // For now, let's implement basic idempotent laws: A & A -> A, A | A -> A
+            next = this.applyIdempotent(current);
+            if (next.toString() !== current.toString()) {
+                current = next;
+                logStep("Idempotent Law", current);
+                changed = true;
+            }
+
+            // 4. Absorption: A | (A & B) -> A, A & (A | B) -> A
+            next = this.applyAbsorption(current);
+            if (next.toString() !== current.toString()) {
+                current = next;
+                logStep("Absorption Law", current);
+                changed = true;
+            }
+        }
+
+        return { result: current.toString(), steps };
+    }
+
+    applyDoubleNegation(node) {
+        if (node.type === 'not' && node.children[0].type === 'not') {
+            return this.applyDoubleNegation(node.children[0].children[0]);
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyDoubleNegation(c)));
+    }
+
+    applyDeMorgan(node) {
+        if (node.type === 'not') {
+            const child = node.children[0];
+            if (child.type === 'and') {
+                return new LogicNode('or', null, [
+                    new LogicNode('not', null, [child.children[0]]),
+                    new LogicNode('not', null, [child.children[1]])
+                ]);
+            }
+            if (child.type === 'or') {
+                return new LogicNode('and', null, [
+                    new LogicNode('not', null, [child.children[0]]),
+                    new LogicNode('not', null, [child.children[1]])
+                ]);
+            }
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyDeMorgan(c)));
+    }
+
+    applyIdempotent(node) {
+        if ((node.type === 'and' || node.type === 'or') && node.children[0].toString() === node.children[1].toString()) {
+            return this.applyIdempotent(node.children[0]);
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyIdempotent(c)));
+    }
+
+    applyAbsorption(node) {
+        if (node.type === 'or') {
+            const [L, R] = node.children;
+            if (R.type === 'and' && (R.children[0].toString() === L.toString() || R.children[1].toString() === L.toString())) return L;
+            if (L.type === 'and' && (L.children[0].toString() === R.toString() || L.children[1].toString() === R.toString())) return R;
+        }
+        if (node.type === 'and') {
+            const [L, R] = node.children;
+            if (R.type === 'or' && (R.children[0].toString() === L.toString() || R.children[1].toString() === L.toString())) return L;
+            if (L.type === 'or' && (L.children[0].toString() === R.toString() || L.children[1].toString() === R.toString())) return R;
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyAbsorption(c)));
+    }
+
+    // --- FOL Inference Engine (Simplified) ---
+    // Support: ∀x (P(x) → Q(x)), P(A) ⊢ Q(A)
+    folInference(premises, query) {
+        const facts = new Set();
+        const rules = [];
+        const steps = [];
+
+        premises.forEach(p => {
+            const trimmed = p.trim();
+            if (trimmed.startsWith('∀') || trimmed.includes('→')) {
+                rules.push(trimmed);
+            } else {
+                facts.add(trimmed);
+            }
+        });
+
+        let changed = true;
+        const maxIter = 10;
+        let iter = 0;
+
+        while (changed && iter < maxIter) {
+            changed = false;
+            iter++;
+
+            for (const rule of rules) {
+                // Simplified Regex for ∀x (P(x) → Q(x))
+                const universalMatch = rule.match(/∀([a-z])\s*\((.*)\s*→\s*(.*)\)/);
+                if (universalMatch) {
+                    const [_, variable, antecedent, consequent] = universalMatch;
+                    
+                    // Look for facts that match the antecedent via Universal Instantiation
+                    for (const fact of facts) {
+                        const predMatch = antecedent.match(/([A-Z][a-z]*)\(([a-z])\)/);
+                        const factMatch = fact.match(/([A-Z][a-z]*)\(([A-Z][a-z]*)\)/);
+                        
+                        if (predMatch && factMatch && predMatch[1] === factMatch[1] && predMatch[2] === variable) {
+                            const constant = factMatch[2];
+                            // Substitute variable with constant in consequent
+                            const derived = consequent.replace(new RegExp(`\\b${variable}\\b`, 'g'), constant);
+                            if (!facts.has(derived)) {
+                                facts.add(derived);
+                                steps.push({
+                                    rule: "Universal Instantiation + Modus Ponens",
+                                    from: `${rule} and ${fact}`,
+                                    result: derived
+                                });
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                
+                // Modus Ponens: P → Q, P ⊢ Q
+                const mpMatch = rule.match(/(.*)\s*→\s*(.*)/);
+                if (mpMatch && !rule.startsWith('∀')) {
+                    const [_, ant, cons] = mpMatch;
+                    const antClean = ant.trim().replace(/^\(|\)$/g, '');
+                    const consClean = cons.trim().replace(/^\(|\)$/g, '');
+                    
+                    if (facts.has(antClean) && !facts.has(consClean)) {
+                        facts.add(consClean);
+                        steps.push({
+                            rule: "Modus Ponens",
+                            from: `${rule} and ${antClean}`,
+                            result: consClean
+                        });
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        const proved = facts.has(query.trim());
+        return { proved, steps, facts: Array.from(facts) };
+    }
 }
 
 window.LogicEngine = LogicEngine;
+
