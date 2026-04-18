@@ -713,6 +713,29 @@ class LogicEngine {
         const proved = facts.has(query.trim());
         return { proved, steps, facts: Array.from(facts) };
     }
+
+    checkEquivalence(expr1, expr2) {
+        const node1 = this.parse(expr1);
+        const node2 = this.parse(expr2);
+        
+        const variables = new Set();
+        this.extractVariables(node1, variables);
+        this.extractVariables(node2, variables);
+        const varList = Array.from(variables).sort();
+        
+        const numRows = Math.pow(2, varList.length);
+        for (let i = 0; i < numRows; i++) {
+            const values = {};
+            varList.forEach((v, idx) => {
+                values[v] = !!(i & (1 << (varList.length - 1 - idx)));
+            });
+            
+            if (this.evaluate(node1, values) !== this.evaluate(node2, values)) {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 window.LogicEngine = LogicEngine;

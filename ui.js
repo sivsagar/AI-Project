@@ -141,17 +141,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const expr2 = eqInp2.value.trim();
             if (!expr1 || !expr2) return;
 
-            const tt1 = engine.generateTruthTable([], expr1);
-            const tt2 = engine.generateTruthTable([], expr2);
-            
-            // Check if results match for all rows
-            // Note: Simplistic check assuming same variable ordering
-            const equivalent = JSON.stringify(tt1.rows.map(r => r.conclusion)) === JSON.stringify(tt2.rows.map(r => r.conclusion));
+            const equivalent = engine.checkEquivalence(expr1, expr2);
             
             const html = `
-                <div class="card ${equivalent ? 'badge-success' : 'badge-error'}" style="text-align:center; padding:2rem;">
-                    <h2 style="color:inherit; font-size:2rem;">${equivalent ? '≡ Equivalent' : '≢ Not Equivalent'}</h2>
-                    <p>${equivalent ? 'Both expressions produce identical truth values.' : 'Expressions differ in at least one truth assignment.'}</p>
+                <div class="card ${equivalent ? 'badge-success' : 'badge-error'}" style="text-align:center; padding:2rem; animation: slideIn 0.4s ease-out;">
+                    <h2 style="color:inherit; font-size:2rem; margin-bottom:1rem;">${equivalent ? '≡ Equivalent' : '≢ Not Equivalent'}</h2>
+                    <p style="font-size:1.1rem; opacity:0.9;">${equivalent ? 'Both expressions produce identical truth values for all possible variable assignments.' : 'Expressions differ in at least one truth assignment.'}</p>
                 </div>`;
             renderOutput('eq-output', html);
         } catch (e) {
@@ -252,5 +247,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('eq-clear-btn').addEventListener('click', () => { eqInp1.value = ''; eqInp2.value = ''; document.getElementById('eq-output').classList.add('hidden'); });
     document.getElementById('tp-clear-btn').addEventListener('click', () => { tpPremises.value = ''; tpConclusion.value = ''; document.getElementById('tp-output').classList.add('hidden'); });
     document.getElementById('fol-clear-btn').addEventListener('click', () => { folPremises.value = ''; folQuery.value = ''; document.getElementById('fol-output').classList.add('hidden'); });
+
+    // === FOL Guide Clicks ===
+    document.querySelectorAll('.guide-item').forEach(item => {
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => {
+            const code = item.querySelector('code').textContent;
+            folPremises.value += (folPremises.value ? '\n' : '') + code;
+            folPremises.focus();
+        });
+    });
 
 });

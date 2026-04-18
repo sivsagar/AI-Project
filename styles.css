@@ -893,50 +893,68 @@ td.conclusion-col { border-left: 2px solid var(--border); }
 .animate-spin { animation: spin 0.75s linear infinite; }
 
 /* === Utility === */
-.hidden { display: none !important; }
-
-/* === Footer === */
-footer {
-    padding: 1.75rem 0 0.5rem;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    border-top: 1px solid var(--border);
-    margin-top: auto;
+/* === Animations & Smoothness === */
+.module-section, .pl-tab-pane {
+    animation: fadeIn 0.4s ease-out;
 }
 
-/* === Mobile === */
-@media (max-width: 768px) {
-    .app-container { padding: 1.25rem 1rem 2.5rem; gap: 1.25rem; }
-    .logo h1 { font-size: 1.45rem; letter-spacing: -0.5px; }
-    .logo-icon-wrap { width: 40px; height: 40px; }
-    .logo-icon-wrap svg { width: 22px; height: 22px; }
-
-    .card { padding: 1.25rem; border-radius: var(--radius-md); }
-    .card:hover { transform: none; box-shadow: var(--shadow-md); }
-
-    .actions { flex-direction: column; gap: 0.625rem; }
-    .kb-hint { margin-left: 0; }
-    .btn { width: 100%; padding: 0.9rem 1.25rem; }
-
-    .tabs { overflow-x: auto; scrollbar-width: none; }
-    .tabs::-webkit-scrollbar { display: none; }
-    .tab-btn { flex: none; padding: 0.5rem 0.75rem; font-size: 0.78rem; }
-
-    .tree-branches { gap: 2rem; }
-
-    .toast-container { bottom: 0.75rem; right: 0.75rem; left: 0.75rem; }
-    .toast { max-width: 100%; }
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 480px) {
-    .logo h1 { font-size: 1.25rem; }
-    .subtitle { font-size: 0.85rem; }
-    .table-container { font-size: 0.78rem; }
-    td, th { padding: 0.6rem 0.5rem; }
-    .symbol-toolbar { gap: 0.35rem; padding: 0.625rem; }
-    .symbol-btn { min-width: 36px; height: 38px; font-size: 1rem; }
+.module-btn, .sub-tab, .btn, .sym-btn {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.module-btn:hover:not(.active) {
+    background: rgba(59, 130, 246, 0.1);
+    transform: translateY(-2px);
+    border-color: var(--primary);
+}
+
+.sub-tab:hover:not(.active) {
+    color: var(--primary-bright);
+}
+
+/* === Glassmorphism Refinements === */
+.card {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* === Custom Scrollbar for results === */
+.output-area {
+    max-height: 500px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.output-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.output-area::-webkit-scrollbar-thumb {
+    background: var(--primary-glow);
+    border-radius: 10px;
+}
+
+/* === Result Card Animation === */
+.step-card {
+    animation: slideIn 0.3s ease-out forwards;
+    opacity: 0;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.step-card:nth-child(1) { animation-delay: 0.1s; }
+.step-card:nth-child(2) { animation-delay: 0.2s; }
+.step-card:nth-child(3) { animation-delay: 0.3s; }
+.step-card:nth-child(4) { animation-delay: 0.4s; }
+.step-card:nth-child(5) { animation-delay: 0.5s; }
 
 /* === Module Navigation === */
 .module-nav {
