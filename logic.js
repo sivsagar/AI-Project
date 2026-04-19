@@ -18,6 +18,23 @@ class LogicNode {
         if (this.type === 'iff') return `(${this.children[0].toString()} <=> ${this.children[1].toString()})`;
         return '';
     }
+
+    equals(other) {
+        if (!other || this.type !== other.type || this.value !== other.value) return false;
+        if (this.children.length !== other.children.length) return false;
+        
+        // For commutative operators, we should ideally check both orders,
+        // but for now, we'll assume a normalized structure or check both.
+        if (this.type === 'and' || this.type === 'or' || this.type === 'iff') {
+            return (this.children[0].equals(other.children[0]) && this.children[1].equals(other.children[1])) ||
+                   (this.children[0].equals(other.children[1]) && this.children[1].equals(other.children[0]));
+        }
+        
+        for (let i = 0; i < this.children.length; i++) {
+            if (!this.children[i].equals(other.children[i])) return false;
+        }
+        return true;
+    }
 }
 
 class TableauxNode {
@@ -99,21 +116,34 @@ class LogicEngine {
             throw new Error(`Unexpected token: ${token.value}`);
         };
 
-        return parseIff();
+        const result = parseIff();
+        if (pos < tokens.length) {
+            throw new Error(`Unexpected token or incomplete expression near: '${tokens[pos].value}'`);
+        }
+        return result;
     }
 
     tokenize(input) {
         // Broad support for mathematical and programming logic symbols
-        const regex = /\s*(=>|<=>|->|<->|~|&|\||&&|\|\||!|¬|∧|∨|→|↔|⊃|≡|NOT|AND|OR|IMPLIES|IFF|\(|\)|[a-zA-Z0-9]+)\s*/gi;
+        const regex = /\s*(=>|<=>|->|<->|==|=|~|&|\||&&|\|\||!|¬|∧|∨|→|↔|⊃|≡|NOT|AND|OR|IMPLIES|IFF|\(|\)|[a-zA-Z0-9]+)\s*/gi;
         const tokens = [];
         let match;
+        let lastIndex = 0;
+
         while ((match = regex.exec(input)) !== null) {
+            // Check for invalid skipped characters
+            if (match.index > lastIndex) {
+                const skipped = input.substring(lastIndex, match.index).trim();
+                if (skipped) throw new Error(`Invalid or unrecognized character: '${skipped}'`);
+            }
+            lastIndex = regex.lastIndex;
+
             const rawVal = match[1];
             const val = rawVal.toUpperCase();
             
             if (val === '=>' || val === '→' || val === '->' || val === '⊃' || val === 'IMPLIES') 
                 tokens.push({ type: 'implies', value: '=>' });
-            else if (val === '<=>' || val === '↔' || val === '<->' || val === '≡' || val === 'IFF') 
+            else if (val === '<=>' || val === '↔' || val === '<->' || val === '≡' || val === 'IFF' || val === '=' || val === '==') 
                 tokens.push({ type: 'iff', value: '<=>' });
             else if (val === '~' || val === '¬' || val === '!' || val === 'NOT') 
                 tokens.push({ type: 'not', value: '~' });
@@ -329,8 +359,13 @@ class LogicEngine {
         return resolvents;
     }
 
-    isComplement(l1, l2) {
-        return (l1 === `~${l2}`) || (l2 === `~${l1}`);
+    isComplement(n1, n2) {
+        if (typeof n1 === 'string' && typeof n2 === 'string') {
+            return (n1 === `~${n2}`) || (n2 === `~${n1}`);
+        }
+        if (n1.type === 'not') return n1.children[0].equals(n2);
+        if (n2.type === 'not') return n2.children[0].equals(n1);
+        return false;
     }
 
     containsClause(clauses, target) {
@@ -340,9 +375,24 @@ class LogicEngine {
 
     // --- Truth Table ---
     generateTruthTable(premises, conclusion) {
-        const allExprs = [...premises, conclusion].map(e => this.parse(e));
+        const conclusionNode = this.parse(conclusion);
+        const subExprNodes = [];
+        this.extractSubExpressions(conclusionNode, subExprNodes);
+        
+        // Remove variables from subExprNodes to avoid duplication with the variable list
+        // and filter to only unique strings
+        const subExprMap = new Map();
+        subExprNodes.forEach(node => {
+            const s = node.toString();
+            if (node.type !== 'variable' && !subExprMap.has(s)) {
+                subExprMap.set(s, node);
+            }
+        });
+        const uniqueSubExprs = Array.from(subExprMap.values());
+
         const variables = new Set();
-        allExprs.forEach(node => this.extractVariables(node, variables));
+        this.extractVariables(conclusionNode, variables);
+        premises.forEach(p => this.extractVariables(this.parse(p), variables));
         const varList = Array.from(variables).sort();
 
         const rows = [];
@@ -355,17 +405,34 @@ class LogicEngine {
                 values[v] = !!(i & (1 << (varList.length - 1 - idx)));
             });
 
-            const row = { values: { ...values }, premises: [], conclusion: null, valid: true };
-            premises.forEach(p => {
-                const res = this.evaluate(this.parse(p), values);
-                row.premises.push(res);
-                if (!res) row.valid = false;
+            const row = { 
+                values: { ...values }, 
+                subExpressions: [], 
+                conclusion: null 
+            };
+            
+            uniqueSubExprs.forEach(node => {
+                row.subExpressions.push({
+                    label: node.toString(),
+                    value: this.evaluate(node, values)
+                });
             });
-            row.conclusion = this.evaluate(this.parse(conclusion), values);
+
+            row.conclusion = this.evaluate(conclusionNode, values);
             rows.push(row);
         }
 
-        return { variables: varList, premises, conclusion, rows };
+        return { 
+            variables: varList, 
+            subExpressions: uniqueSubExprs.map(n => n.toString()),
+            conclusion, 
+            rows 
+        };
+    }
+
+    extractSubExpressions(node, exprs) {
+        node.children.forEach(c => this.extractSubExpressions(c, exprs));
+        exprs.push(node);
     }
 
     extractVariables(node, vars) {
@@ -542,57 +609,89 @@ class LogicEngine {
         let changed = true;
         let steps = [];
         
-        const logStep = (rule, result) => {
+        const logStep = (rule, description, result) => {
             const resStr = result.toString();
             if (steps.length === 0 || steps[steps.length - 1].result !== resStr) {
-                steps.push({ rule, result: resStr });
+                steps.push({ rule, description, result: resStr });
             }
         };
 
         // Initial state
-        logStep("Original", current);
+        logStep("Original", "The starting logical expression.", current);
 
         while (changed) {
             changed = false;
             
             // 1. Double Negation: ~~A -> A
             let next = this.applyDoubleNegation(current);
-            if (next.toString() !== current.toString()) {
+            if (!next.equals(current)) {
                 current = next;
-                logStep("Double Negation", current);
+                logStep("Double Negation", "Removed double negations (¬¬A ≡ A).", current);
                 changed = true;
+                continue; // Restart rules on new expression
             }
 
             // 2. De Morgan's: ~(A & B) -> ~A | ~B, ~(A | B) -> ~A & ~B
             next = this.applyDeMorgan(current);
-            if (next.toString() !== current.toString()) {
+            if (!next.equals(current)) {
                 current = next;
-                logStep("De Morgan's Law", current);
+                logStep("De Morgan's Law", "Distributed negation across AND/OR operators.", current);
                 changed = true;
+                continue;
             }
 
             // 3. Idempotent laws: A & A -> A, A | A -> A
             next = this.applyIdempotent(current);
-            if (next.toString() !== current.toString()) {
+            if (!next.equals(current)) {
                 current = next;
-                logStep("Idempotent Law", current);
+                logStep("Idempotent Law", "Simplified redundant repeated terms (A ∧ A ≡ A).", current);
                 changed = true;
+                continue;
             }
 
-            // 4. Absorption: A | (A & B) -> A, A & (A | B) -> A
+            // 4. Absorption Phase 1 (Factoring)
             next = this.applyAbsorption(current);
-            if (next.toString() !== current.toString()) {
+            if (!next.equals(current)) {
                 current = next;
-                logStep("Absorption Law", current);
+                logStep("Factoring (Distributive)", "Factored out common terms (e.g., A ∨ (A ∧ B) → A ∧ (T ∨ B)).", current);
                 changed = true;
+                continue;
             }
 
-            // 5. Identity & Annihilation: A & T -> A, A | F -> A, etc.
-            next = this.applyIdentity(current);
-            if (next.toString() !== current.toString()) {
+            // 5. Redundancy Phase 1 (Expansion)
+            next = this.applyRedundancy(current);
+            if (!next.equals(current)) {
                 current = next;
-                logStep("Identity Law", current);
+                logStep("Distributive Law", "Distributed terms to reveal complements (e.g., A ∨ (¬A ∧ B) → (A ∨ ¬A) ∧ (A ∨ B)).", current);
                 changed = true;
+                continue;
+            }
+
+            // 6. Complement Law: A | ~A -> T, A & ~A -> F
+            next = this.applyComplement(current);
+            if (!next.equals(current)) {
+                current = next;
+                logStep("Complement Law", "Simplified using complements (A ∨ ¬A ≡ T, A ∧ ¬A ≡ F).", current);
+                changed = true;
+                continue;
+            }
+
+            // 7. Identity & Annihilation: A & T -> A, A | F -> A, etc.
+            next = this.applyIdentity(current);
+            if (!next.equals(current)) {
+                current = next;
+                logStep("Identity Law", "Simplified using logical constants (T/F).", current);
+                changed = true;
+                continue;
+            }
+
+            // 8. Distributive Law (Specific Patterns)
+            next = this.applyDistributive(current);
+            if (!next.equals(current)) {
+                current = next;
+                logStep("Distributive Law", "Factored or distributed terms to enable further simplification.", current);
+                changed = true;
+                continue;
             }
         }
 
@@ -602,19 +701,115 @@ class LogicEngine {
     applyIdentity(node) {
         if (node.type === 'and') {
             const [L, R] = node.children;
-            if (L.value === 'T' || L.value === 'TRUE') return this.applyIdentity(R);
-            if (R.value === 'T' || R.value === 'TRUE') return this.applyIdentity(L);
-            if (L.value === 'F' || L.value === 'FALSE') return new LogicNode('variable', 'F');
-            if (R.value === 'F' || R.value === 'FALSE') return new LogicNode('variable', 'F');
+            const lVal = this.applyIdentity(L);
+            const rVal = this.applyIdentity(R);
+            if (lVal.value === 'T' || lVal.value === 'TRUE') return rVal;
+            if (rVal.value === 'T' || rVal.value === 'TRUE') return lVal;
+            if (lVal.value === 'F' || lVal.value === 'FALSE') return new LogicNode('variable', 'F');
+            if (rVal.value === 'F' || rVal.value === 'FALSE') return new LogicNode('variable', 'F');
+            return new LogicNode('and', null, [lVal, rVal]);
         }
         if (node.type === 'or') {
             const [L, R] = node.children;
-            if (L.value === 'F' || L.value === 'FALSE') return this.applyIdentity(R);
-            if (R.value === 'F' || R.value === 'FALSE') return this.applyIdentity(L);
-            if (L.value === 'T' || L.value === 'TRUE') return new LogicNode('variable', 'T');
-            if (R.value === 'T' || R.value === 'TRUE') return new LogicNode('variable', 'T');
+            const lVal = this.applyIdentity(L);
+            const rVal = this.applyIdentity(R);
+            if (lVal.value === 'F' || lVal.value === 'FALSE') return rVal;
+            if (rVal.value === 'F' || rVal.value === 'FALSE') return lVal;
+            if (lVal.value === 'T' || lVal.value === 'TRUE') return new LogicNode('variable', 'T');
+            if (rVal.value === 'T' || rVal.value === 'TRUE') return new LogicNode('variable', 'T');
+            return new LogicNode('or', null, [lVal, rVal]);
         }
         return new LogicNode(node.type, node.value, node.children.map(c => this.applyIdentity(c)));
+    }
+
+    applyComplement(node) {
+        if (node.type === 'or') {
+            const [L, R] = node.children;
+            if (this.isComplement(L, R)) return new LogicNode('variable', 'T');
+        }
+        if (node.type === 'and') {
+            const [L, R] = node.children;
+            if (this.isComplement(L, R)) return new LogicNode('variable', 'F');
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyComplement(c)));
+    }
+
+    applyAbsorption(node) {
+        if (node.type === 'or') {
+            const [L, R] = node.children;
+            if (R.type === 'and') {
+                if (R.children[0].equals(L)) return new LogicNode('and', null, [L, new LogicNode('or', null, [new LogicNode('variable', 'T'), R.children[1]])]);
+                if (R.children[1].equals(L)) return new LogicNode('and', null, [L, new LogicNode('or', null, [new LogicNode('variable', 'T'), R.children[0]])]);
+            }
+            if (L.type === 'and') {
+                if (L.children[0].equals(R)) return new LogicNode('and', null, [R, new LogicNode('or', null, [new LogicNode('variable', 'T'), L.children[1]])]);
+                if (L.children[1].equals(R)) return new LogicNode('and', null, [R, new LogicNode('or', null, [new LogicNode('variable', 'T'), L.children[0]])]);
+            }
+        }
+        if (node.type === 'and') {
+            const [L, R] = node.children;
+            if (R.type === 'or') {
+                if (R.children[0].equals(L)) return new LogicNode('or', null, [L, new LogicNode('and', null, [new LogicNode('variable', 'F'), R.children[1]])]);
+                if (R.children[1].equals(L)) return new LogicNode('or', null, [L, new LogicNode('and', null, [new LogicNode('variable', 'F'), R.children[0]])]);
+            }
+            if (L.type === 'or') {
+                if (L.children[0].equals(R)) return new LogicNode('or', null, [R, new LogicNode('and', null, [new LogicNode('variable', 'F'), L.children[1]])]);
+                if (L.children[1].equals(R)) return new LogicNode('or', null, [R, new LogicNode('and', null, [new LogicNode('variable', 'F'), L.children[0]])]);
+            }
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyAbsorption(c)));
+    }
+
+    applyRedundancy(node) {
+        if (node.type === 'or') {
+            const [L, R] = node.children;
+            // A | (~A & B) -> (A | ~A) & (A | B)
+            if (R.type === 'and') {
+                if (this.isComplement(L, R.children[0])) return new LogicNode('and', null, [new LogicNode('or', null, [L, R.children[0]]), new LogicNode('or', null, [L, R.children[1]])]);
+                if (this.isComplement(L, R.children[1])) return new LogicNode('and', null, [new LogicNode('or', null, [L, R.children[1]]), new LogicNode('or', null, [L, R.children[0]])]);
+            }
+            if (L.type === 'and') {
+                if (this.isComplement(R, L.children[0])) return new LogicNode('and', null, [new LogicNode('or', null, [R, L.children[0]]), new LogicNode('or', null, [R, L.children[1]])]);
+                if (this.isComplement(R, L.children[1])) return new LogicNode('and', null, [new LogicNode('or', null, [R, L.children[1]]), new LogicNode('or', null, [R, L.children[0]])]);
+            }
+        }
+        if (node.type === 'and') {
+            const [L, R] = node.children;
+            // A & (~A | B) -> (A & ~A) | (A & B)
+            if (R.type === 'or') {
+                if (this.isComplement(L, R.children[0])) return new LogicNode('or', null, [new LogicNode('and', null, [L, R.children[0]]), new LogicNode('and', null, [L, R.children[1]])]);
+                if (this.isComplement(L, R.children[1])) return new LogicNode('or', null, [new LogicNode('and', null, [L, R.children[1]]), new LogicNode('and', null, [L, R.children[0]])]);
+            }
+            if (L.type === 'or') {
+                if (this.isComplement(R, L.children[0])) return new LogicNode('or', null, [new LogicNode('and', null, [R, L.children[0]]), new LogicNode('and', null, [R, L.children[1]])]);
+                if (this.isComplement(R, L.children[1])) return new LogicNode('or', null, [new LogicNode('and', null, [R, L.children[1]]), new LogicNode('and', null, [R, L.children[0]])]);
+            }
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyRedundancy(c)));
+    }
+
+    applyDistributive(node) {
+        if (node.type === 'or') {
+            const [L, R] = node.children;
+            // (A & B) | (A & C) -> A & (B | C)
+            if (L.type === 'and' && R.type === 'and') {
+                if (L.children[0].equals(R.children[0])) return new LogicNode('and', null, [L.children[0], new LogicNode('or', null, [L.children[1], R.children[1]])]);
+                if (L.children[0].equals(R.children[1])) return new LogicNode('and', null, [L.children[0], new LogicNode('or', null, [L.children[1], R.children[0]])]);
+                if (L.children[1].equals(R.children[0])) return new LogicNode('and', null, [L.children[1], new LogicNode('or', null, [L.children[0], R.children[1]])]);
+                if (L.children[1].equals(R.children[1])) return new LogicNode('and', null, [L.children[1], new LogicNode('or', null, [L.children[0], R.children[0]])]);
+            }
+        }
+        if (node.type === 'and') {
+            const [L, R] = node.children;
+            // (A | B) & (A | C) -> A | (B & C)
+            if (L.type === 'or' && R.type === 'or') {
+                if (L.children[0].equals(R.children[0])) return new LogicNode('or', null, [L.children[0], new LogicNode('and', null, [L.children[1], R.children[1]])]);
+                if (L.children[0].equals(R.children[1])) return new LogicNode('or', null, [L.children[0], new LogicNode('and', null, [L.children[1], R.children[0]])]);
+                if (L.children[1].equals(R.children[0])) return new LogicNode('or', null, [L.children[1], new LogicNode('and', null, [L.children[0], R.children[1]])]);
+                if (L.children[1].equals(R.children[1])) return new LogicNode('or', null, [L.children[1], new LogicNode('and', null, [L.children[0], R.children[0]])]);
+            }
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyDistributive(c)));
     }
 
     applyDoubleNegation(node) {
@@ -669,11 +864,26 @@ class LogicEngine {
         const facts = new Set();
         const rules = [];
         const steps = [];
+        let skolemCounter = 1;
 
         premises.forEach(p => {
             const trimmed = p.trim();
-            if (trimmed.startsWith('∀') || trimmed.includes('→')) {
+            if (trimmed.startsWith('∀') || trimmed.includes('→') || trimmed.includes('=>') || trimmed.includes('->')) {
                 rules.push(trimmed);
+            } else if (trimmed.startsWith('∃')) {
+                // Existential Instantiation
+                const match = trimmed.match(/∃([a-z])\s*(.*)$/);
+                if (match) {
+                    const [_, variable, body] = match;
+                    const skolemConst = `C${skolemCounter++}`;
+                    const instantiated = body.replace(new RegExp(`\\b${variable}\\b`, 'g'), skolemConst).trim();
+                    facts.add(instantiated);
+                    steps.push({
+                        rule: "Existential Instantiation",
+                        from: trimmed,
+                        result: instantiated
+                    });
+                }
             } else {
                 facts.add(trimmed);
             }
@@ -776,7 +986,46 @@ class LogicEngine {
             }
         }
 
-        const proved = facts.has(query.trim());
+        let proved = facts.has(query.trim());
+        
+        // Existential Generalization for Query
+        if (!proved && query.trim().startsWith('∃')) {
+            const match = query.trim().match(/∃([a-z])\s*(.*)$/);
+            if (match) {
+                const [_, variable, body] = match;
+                const bodyMatch = body.trim().match(/^([A-Z][a-zA-Z0-9]*)\((.*)\)$/);
+                if (bodyMatch) {
+                    const queryPred = bodyMatch[1];
+                    const queryArgs = bodyMatch[2].split(',').map(s => s.trim());
+                    
+                    for (const fact of facts) {
+                        const factMatch = fact.match(/^([A-Z][a-zA-Z0-9]*)\((.*)\)$/);
+                        if (factMatch && factMatch[1] === queryPred) {
+                            const factArgs = factMatch[2].split(',').map(s => s.trim());
+                            if (factArgs.length === queryArgs.length) {
+                                let canGeneralize = true;
+                                for (let i = 0; i < queryArgs.length; i++) {
+                                    if (queryArgs[i] !== variable && queryArgs[i] !== factArgs[i]) {
+                                        canGeneralize = false;
+                                        break;
+                                    }
+                                }
+                                if (canGeneralize) {
+                                    proved = true;
+                                    steps.push({
+                                        rule: "Existential Generalization",
+                                        from: fact,
+                                        result: query.trim()
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return { proved, steps, facts: Array.from(facts) };
     }
 
@@ -788,6 +1037,8 @@ class LogicEngine {
         this.extractVariables(node1, variables);
         this.extractVariables(node2, variables);
         const varList = Array.from(variables).sort();
+        
+        if (varList.length > 14) throw new Error(`Too many variables (${varList.length}). Maximum 14 variables allowed.`);
         
         const numRows = Math.pow(2, varList.length);
         for (let i = 0; i < numRows; i++) {

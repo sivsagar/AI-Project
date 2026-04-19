@@ -117,20 +117,69 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!expr) return;
             const tt = engine.generateTruthTable([], expr);
             
-            let html = '<thead><tr>';
+            // Determine classification
+            const allTrue = tt.rows.every(r => r.conclusion);
+            const allFalse = tt.rows.every(r => !r.conclusion);
+            let classification = "Contingency";
+            let classClass = "badge-processing"; // Default style for contingency
+            let classDesc = "The expression is true for some assignments and false for others.";
+            
+            if (allTrue) {
+                classification = "Tautology";
+                classClass = "badge-success";
+                classDesc = "The expression is always TRUE, regardless of variable assignments.";
+            } else if (allFalse) {
+                classification = "Contradiction";
+                classClass = "badge-error";
+                classDesc = "The expression is always FALSE, regardless of variable assignments.";
+            }
+
+            let html = `
+                <div class="card" style="margin-bottom: 2rem; border-left: 5px solid var(--primary); display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <span class="badge ${classClass}" style="animation: none;">${classification}</span>
+                            <h2 style="font-size: 1.25rem; margin: 0;">Logical Classification</h2>
+                        </div>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin: 0;">${classDesc}</p>
+                    </div>
+                    <div style="font-size: 2.5rem; opacity: 0.2; font-weight: 800; user-select: none;">${classification[0]}</div>
+                </div>
+            `;
+
+            html += '<h3 style="margin-bottom: 1rem; color: var(--text-bright); font-size: 1.1rem;">Truth Table (T / F Form)</h3>';
+            html += '<div class="table-container"><table><thead><tr>';
+            
+            // Header: Variables
             tt.variables.forEach(v => html += `<th class="var-col">${v}</th>`);
+            
+            // Header: Sub-expressions (excluding the final one which is the conclusion)
+            const intermediateExprs = tt.subExpressions.filter(s => s !== tt.conclusion);
+            intermediateExprs.forEach(s => html += `<th class="sub-expr-col">${s}</th>`);
+            
+            // Header: Final Conclusion
             html += `<th class="conclusion-col">${tt.conclusion}</th></tr></thead><tbody>`;
             
             tt.rows.forEach(row => {
                 html += '<tr>';
+                // Cells: Variables
                 tt.variables.forEach(v => {
                     const val = row.values[v];
                     html += `<td class="${val ? 'cell-true' : 'cell-false'}">${val ? 'T' : 'F'}</td>`;
                 });
+                
+                // Cells: Sub-expressions
+                row.subExpressions.forEach(sub => {
+                    if (sub.label !== tt.conclusion) {
+                        html += `<td class="${sub.value ? 'cell-true' : 'cell-false'}">${sub.value ? 'T' : 'F'}</td>`;
+                    }
+                });
+                
+                // Cell: Conclusion
                 html += `<td class="conclusion-col ${row.conclusion ? 'cell-true' : 'cell-false'}">${row.conclusion ? 'T' : 'F'}</td></tr>`;
             });
-            html += '</tbody>';
-            renderOutput('tt-output', html, true);
+            html += '</tbody></table></div>';
+            renderOutput('tt-output', html);
         } catch (e) {
             renderOutput('tt-output', `<div class="error-msg">✕ ${e.message}</div>`);
         }
@@ -145,20 +194,36 @@ document.addEventListener('DOMContentLoaded', () => {
             const node = engine.parse(simpInp.value);
             const { result, steps } = engine.simplify(node);
             
-            let html = '<div class="explanation-steps">';
+            // Extract unique rules applied (excluding "Original")
+            const rulesApplied = Array.from(new Set(steps.map(s => s.rule).filter(r => r !== 'Original')));
+            
+            let html = '';
+            
+            if (rulesApplied.length > 0) {
+                html += `
+                    <div style="margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                        <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-secondary);">Rules Applied:</span>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            ${rulesApplied.map(r => `<span class="badge badge-processing" style="animation: none; opacity: 1;">${r}</span>`).join('')}
+                        </div>
+                    </div>`;
+            }
+
+            html += '<div class="explanation-steps">';
             steps.forEach((step, i) => {
                 html += `
                     <div class="step-card">
                         <h3>Step ${i}: ${step.rule}</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem; padding-left: 0.25rem;">${step.description}</p>
                         <div class="step-item">
                             <span class="step-label">Current Expression</span>
                             <span class="step-content">${step.result}</span>
                         </div>
                     </div>`;
             });
-            html += `</div><div class="card" style="margin-top:1.5rem; border: 1px solid var(--success-bg); background: var(--success-bg);">
-                        <label>Final Simplified Result</label>
-                        <code style="font-size:1.3rem; color:var(--success); display:block; margin-top:0.5rem;">${result}</code>
+            html += `</div><div class="card" style="margin-top:2rem; border: 1px solid var(--success-bg); background: var(--success-bg); text-align: center;">
+                        <label style="color: var(--success);">Final Simplified Result</label>
+                        <code style="font-size:1.5rem; color:var(--success); display:block; margin-top:0.5rem; font-weight: 700;">${result}</code>
                      </div>`;
             renderOutput('simp-output', html);
         } catch (e) {
@@ -179,17 +244,103 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const equivalent = engine.checkEquivalence(expr1, expr2);
             
-            const html = `
-                <div class="card ${equivalent ? 'badge-success' : 'badge-error'}" style="text-align:center; padding:2.5rem; animation: fadeInUp 0.5s ease-out; border-radius: var(--radius-xl);">
+            let html = `
+                <div class="card ${equivalent ? 'badge-success' : 'badge-error'}" style="text-align:center; padding:2.5rem; animation: fadeInUp 0.5s ease-out; border-radius: var(--radius-xl); margin-bottom: 2rem;">
                     <div style="font-size:3rem; margin-bottom:1rem;">${equivalent ? '≡' : '≢'}</div>
                     <h2 style="color:inherit; font-size:1.75rem; margin-bottom:1rem;">${equivalent ? 'Logically Equivalent' : 'Not Equivalent'}</h2>
                     <p style="font-size:1.1rem; opacity:0.85; max-width: 500px; margin: 0 auto;">${equivalent ? 'Both expressions produce identical truth values for all possible variable assignments.' : 'The expressions differ in at least one truth assignment.'}</p>
                 </div>`;
+                
+            // Generate Truth Tables for comparison
+            const tt1 = engine.generateTruthTable([], expr1);
+            const tt2 = engine.generateTruthTable([], expr2);
+            
+            // Combine variables
+            const vars = Array.from(new Set([...tt1.variables, ...tt2.variables])).sort();
+            
+            html += '<h3 style="margin-bottom: 1rem; color: var(--text-bright); font-size: 1.1rem;">Comparative Truth Table</h3>';
+            html += '<div class="table-container"><table><thead><tr>';
+            
+            // Header: Variables
+            vars.forEach(v => {
+                html += `<th class="var-col">${v}</th>`;
+            });
+            
+            // Header: Expr 1 Sub-expressions
+            tt1.subExpressions.forEach(sub => {
+                if (sub !== tt1.conclusion) html += `<th class="sub-expr-col" style="border-left: 2px solid var(--border);">${sub}</th>`;
+            });
+            
+            // Header: Expr 1 Final
+            html += `<th class="conclusion-col" style="border-left: 2px solid var(--border);">${expr1}</th>`;
+            
+            // Header: Expr 2 Sub-expressions
+            tt2.subExpressions.forEach(sub => {
+                if (sub !== tt2.conclusion) html += `<th class="sub-expr-col" style="border-left: 2px solid var(--border);">${sub}</th>`;
+            });
+            
+            // Header: Expr 2 Final
+            html += `<th class="conclusion-col" style="border-left: 2px solid var(--border);">${expr2}</th>`;
+            
+            // Header: Match?
+            html += `<th class="conclusion-col" style="background: var(--surface);">Match?</th></tr></thead><tbody>`;
+            
+            const numRows = Math.pow(2, vars.length);
+            for (let i = numRows - 1; i >= 0; i--) {
+                const values = {};
+                vars.forEach((v, idx) => {
+                    values[v] = !!(i & (1 << (vars.length - 1 - idx)));
+                });
+                
+                const val1 = engine.evaluate(engine.parse(expr1), values);
+                const val2 = engine.evaluate(engine.parse(expr2), values);
+                const match = val1 === val2;
+                
+                html += '<tr>';
+                
+                // Variables
+                vars.forEach(v => {
+                    const val = values[v];
+                    html += `<td class="${val ? 'cell-true' : 'cell-false'}">${val ? 'T' : 'F'}</td>`;
+                });
+                
+                // Expr 1 Sub-expressions
+                tt1.subExpressions.forEach(sub => {
+                    if (sub !== tt1.conclusion) {
+                        const subVal = engine.evaluate(engine.parse(sub), values);
+                        html += `<td style="border-left: 2px solid var(--border);" class="${subVal ? 'cell-true' : 'cell-false'}">${subVal ? 'T' : 'F'}</td>`;
+                    }
+                });
+                
+                // Expr 1 Final
+                html += `<td style="border-left: 2px solid var(--border);" class="${val1 ? 'cell-true' : 'cell-false'}">${val1 ? 'T' : 'F'}</td>`;
+                
+                // Expr 2 Sub-expressions
+                tt2.subExpressions.forEach(sub => {
+                    if (sub !== tt2.conclusion) {
+                        const subVal = engine.evaluate(engine.parse(sub), values);
+                        html += `<td style="border-left: 2px solid var(--border);" class="${subVal ? 'cell-true' : 'cell-false'}">${subVal ? 'T' : 'F'}</td>`;
+                    }
+                });
+                
+                // Expr 2 Final
+                html += `<td style="border-left: 2px solid var(--border);" class="${val2 ? 'cell-true' : 'cell-false'}">${val2 ? 'T' : 'F'}</td>`;
+                
+                // Match Column
+                if (match) {
+                     html += `<td style="background: var(--surface); color: var(--success); font-weight: bold;">Yes</td></tr>`;
+                } else {
+                     html += `<td style="background: var(--surface); color: var(--error); font-weight: bold;">No</td></tr>`;
+                }
+            }
+            html += '</tbody></table></div>';
+
             renderOutput('eq-output', html);
         } catch (e) {
             renderOutput('eq-output', `<div class="error-msg">✕ ${e.message}</div>`);
         }
     });
+
 
     // === 4. Theorem Prover (Resolution & Tableaux) ===
     const tpPremises = document.getElementById('tp-premises');

@@ -663,8 +663,9 @@ th {
 }
 
 th.var-col        { color: var(--primary-bright); }
+th.sub-expr-col   { color: var(--text-secondary); opacity: 0.9; }
 th.premise-col    { background: rgba(139,92,246,0.05); color: var(--accent-purple); }
-th.conclusion-col { color: var(--accent-cyan); border-left: 2px solid var(--border); }
+th.conclusion-col { color: var(--accent-cyan); border-left: 1px solid var(--border); }
 
 td {
     padding: 0.75rem 1rem;
@@ -676,10 +677,10 @@ td {
     transition: background 0.14s ease;
 }
 
-tbody tr:hover td { background: rgba(59,130,246,0.025); }
+tbody tr:hover td { background: rgba(59,130,246,0.02); }
 tbody tr:last-child td { border-bottom: none; }
 
-td.conclusion-col { border-left: 2px solid var(--border); }
+td.conclusion-col { border-left: 1px solid var(--border); }
 
 .cell-true  { color: var(--success); }
 .cell-false { color: var(--error); }
