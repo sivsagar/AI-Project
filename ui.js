@@ -5,6 +5,9 @@
 document.addEventListener('DOMContentLoaded', () => {
     const engine = new window.LogicEngine();
 
+    // === Global State ===
+    let lastFocusedInput = document.getElementById('tt-expr');
+
     // === Global Elements ===
     const themeToggle = document.getElementById('theme-toggle');
     const themeIcon = document.getElementById('theme-icon');
@@ -22,7 +25,15 @@ document.addEventListener('DOMContentLoaded', () => {
             moduleBtns.forEach(b => b.classList.remove('active'));
             moduleSections.forEach(s => s.classList.add('hidden'));
             btn.classList.add('active');
-            document.getElementById(`${modId}-module`).classList.remove('hidden');
+            const mod = document.getElementById(`${modId}-module`);
+            mod.classList.remove('hidden');
+            
+            // Auto-focus first input in the module
+            const firstInp = mod.querySelector('input, textarea');
+            if (firstInp) {
+                firstInp.focus();
+                lastFocusedInput = firstInp;
+            }
         });
     });
 
@@ -32,30 +43,53 @@ document.addEventListener('DOMContentLoaded', () => {
             subTabs.forEach(t => t.classList.remove('active'));
             plTabPanes.forEach(p => p.classList.add('hidden'));
             tab.classList.add('active');
-            document.getElementById(`pl-tab-${paneId}`).classList.remove('hidden');
+            const pane = document.getElementById(`pl-tab-${paneId}`);
+            pane.classList.remove('hidden');
+            
+            // Auto-focus first input in the tab
+            const firstInp = pane.querySelector('input, textarea');
+            if (firstInp) {
+                firstInp.focus();
+                lastFocusedInput = firstInp;
+            }
+        });
+    });
+
+    // Track focused input for symbol insertion
+    document.querySelectorAll('input, textarea').forEach(inp => {
+        inp.addEventListener('focus', () => {
+            lastFocusedInput = inp;
+        });
+        
+        // Handle Ctrl+Enter
+        inp.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                const card = inp.closest('.card');
+                const solveBtn = card.querySelector('.btn-primary');
+                if (solveBtn) solveBtn.click();
+            }
         });
     });
 
     // === Theme Toggle ===
     themeToggle.addEventListener('click', () => {
-        const isDark = body.classList.toggle('light-theme');
+        body.classList.toggle('light-theme');
         themeIcon.textContent = body.classList.contains('light-theme') ? '🌙' : '☀️';
     });
 
     // === Symbol Toolbars ===
     document.querySelectorAll('.sym-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
             const sym = btn.getAttribute('data-sym');
-            const targetId = btn.closest('.module-section').id === 'pl-module' 
-                ? document.querySelector('.pl-tab-pane:not(.hidden) input, .pl-tab-pane:not(.hidden) textarea').id
-                : 'fol-premises';
-            const input = document.getElementById(targetId);
-            if (input) {
-                const start = input.selectionStart;
-                const end = input.selectionEnd;
-                input.value = input.value.substring(0, start) + sym + input.value.substring(end);
-                input.focus();
-                input.setSelectionRange(start + sym.length, start + sym.length);
+            if (lastFocusedInput) {
+                const start = lastFocusedInput.selectionStart;
+                const end = lastFocusedInput.selectionEnd;
+                const val = lastFocusedInput.value;
+                lastFocusedInput.value = val.substring(0, start) + sym + val.substring(end);
+                lastFocusedInput.focus();
+                const newPos = start + sym.length;
+                lastFocusedInput.setSelectionRange(newPos, newPos);
             }
         });
     });
@@ -98,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
             html += '</tbody>';
             renderOutput('tt-output', html, true);
         } catch (e) {
-            renderOutput('tt-output', `<div class="error-msg">Error: ${e.message}</div>`);
+            renderOutput('tt-output', `<div class="error-msg">✕ ${e.message}</div>`);
         }
     });
 
@@ -117,16 +151,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="step-card">
                         <h3>Step ${i}: ${step.rule}</h3>
                         <div class="step-item">
+                            <span class="step-label">Current Expression</span>
                             <span class="step-content">${step.result}</span>
                         </div>
                     </div>`;
             });
-            html += `</div><div class="card" style="margin-top:1rem; border-color:var(--success);">
-                        <strong>Simplified Result:</strong> <code style="font-size:1.2rem; color:var(--success);">${result}</code>
+            html += `</div><div class="card" style="margin-top:1.5rem; border: 1px solid var(--success-bg); background: var(--success-bg);">
+                        <label>Final Simplified Result</label>
+                        <code style="font-size:1.3rem; color:var(--success); display:block; margin-top:0.5rem;">${result}</code>
                      </div>`;
             renderOutput('simp-output', html);
         } catch (e) {
-            renderOutput('simp-output', `<div class="error-msg">Error: ${e.message}</div>`);
+            renderOutput('simp-output', `<div class="error-msg">✕ ${e.message}</div>`);
         }
     });
 
@@ -144,30 +180,38 @@ document.addEventListener('DOMContentLoaded', () => {
             const equivalent = engine.checkEquivalence(expr1, expr2);
             
             const html = `
-                <div class="card ${equivalent ? 'badge-success' : 'badge-error'}" style="text-align:center; padding:2rem; animation: slideIn 0.4s ease-out;">
-                    <h2 style="color:inherit; font-size:2rem; margin-bottom:1rem;">${equivalent ? '≡ Equivalent' : '≢ Not Equivalent'}</h2>
-                    <p style="font-size:1.1rem; opacity:0.9;">${equivalent ? 'Both expressions produce identical truth values for all possible variable assignments.' : 'Expressions differ in at least one truth assignment.'}</p>
+                <div class="card ${equivalent ? 'badge-success' : 'badge-error'}" style="text-align:center; padding:2.5rem; animation: fadeInUp 0.5s ease-out; border-radius: var(--radius-xl);">
+                    <div style="font-size:3rem; margin-bottom:1rem;">${equivalent ? '≡' : '≢'}</div>
+                    <h2 style="color:inherit; font-size:1.75rem; margin-bottom:1rem;">${equivalent ? 'Logically Equivalent' : 'Not Equivalent'}</h2>
+                    <p style="font-size:1.1rem; opacity:0.85; max-width: 500px; margin: 0 auto;">${equivalent ? 'Both expressions produce identical truth values for all possible variable assignments.' : 'The expressions differ in at least one truth assignment.'}</p>
                 </div>`;
             renderOutput('eq-output', html);
         } catch (e) {
-            renderOutput('eq-output', `<div class="error-msg">Error: ${e.message}</div>`);
+            renderOutput('eq-output', `<div class="error-msg">✕ ${e.message}</div>`);
         }
     });
 
-    // === 4. Theorem Prover (Resolution) ===
+    // === 4. Theorem Prover (Resolution & Tableaux) ===
     const tpPremises = document.getElementById('tp-premises');
     const tpConclusion = document.getElementById('tp-conclusion');
     const tpSolve = document.getElementById('tp-solve-btn');
 
     tpSolve.addEventListener('click', () => {
         try {
-            const premises = tpPremises.value.split('\n').filter(l => l.trim());
+            const premises = tpPremises.value.split('\n').map(l => l.trim()).filter(l => l);
             const conclusion = tpConclusion.value.trim();
+            if (!conclusion) throw new Error("Please enter a conclusion to prove.");
+
             const { proved, resolutionSteps } = engine.resolve(premises, conclusion);
             
-            let html = `<div class="card ${proved ? 'badge-success' : 'badge-error'}" style="margin-bottom:1rem;">
-                            <h2>${proved ? '⊢ Proved' : '⊬ Not Proved'}</h2>
-                        </div>`;
+            let html = `
+                <div class="card ${proved ? 'badge-success' : 'badge-error'}" style="margin-bottom:1.5rem; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h2 style="color:inherit; font-size:1.5rem;">${proved ? '⊢ Proved' : '⊬ Not Proved'}</h2>
+                        <p style="opacity:0.8; font-size:0.9rem;">Derived using Resolution Refutation</p>
+                    </div>
+                    <button id="view-tree-btn" class="btn btn-secondary btn-sm">View Truth Tree (Tableaux)</button>
+                </div>`;
             
             html += '<div class="explanation-steps">';
             resolutionSteps.forEach((step, i) => {
@@ -175,21 +219,82 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="step-card">
                         <h3>Resolution Step ${i + 1}</h3>
                         <div class="step-item">
-                            <span class="step-label">Combine</span>
-                            <div class="step-content">${step.c1} and ${step.c2}</div>
+                            <span class="step-label">Resolve</span>
+                            <div class="step-content">${step.c1} <span style="color:var(--text-muted); padding:0 0.5rem;">+</span> ${step.c2}</div>
                         </div>
-                        <div class="step-item">
-                            <span class="step-label">Result</span>
+                        <div class="step-item" style="border-left-color: var(--accent-cyan)">
+                            <span class="step-label">Resulting Clause</span>
                             <div class="step-content" style="color:var(--primary-bright)">${step.res}</div>
                         </div>
                     </div>`;
             });
+            if (resolutionSteps.length === 0 && !proved) {
+                html += '<div class="card">No resolution steps could be performed. The goal might be independent of the premises.</div>';
+            }
             html += '</div>';
             renderOutput('tp-output', html);
+
+            // Setup Truth Tree Toggle
+            document.getElementById('view-tree-btn').addEventListener('click', () => {
+                const tableauxRoot = engine.generateTableaux(premises, conclusion);
+                const treeHtml = `
+                    <div class="card" style="margin-top:1.5rem; overflow:hidden;">
+                        <div class="card-header">
+                            <span class="ch-icon">🌲</span>
+                            <h2>Semantic Tableaux (Truth Tree)</h2>
+                        </div>
+                        <div class="tree-wrapper">
+                            ${renderTableauxHTML(tableauxRoot)}
+                        </div>
+                        <div class="syntax-hint" style="margin-top:1rem; text-align:center;">
+                            A branch closes (✕) if it contains a literal and its negation. If all branches close, the theorem is proved.
+                        </div>
+                    </div>
+                `;
+                const treeContainer = document.createElement('div');
+                treeContainer.innerHTML = treeHtml;
+                document.getElementById('tp-output').appendChild(treeContainer);
+                treeContainer.scrollIntoView({ behavior: 'smooth' });
+            });
+
         } catch (e) {
-            renderOutput('tp-output', `<div class="error-msg">Error: ${e.message}</div>`);
+            renderOutput('tp-output', `<div class="error-msg">✕ ${e.message}</div>`);
         }
     });
+
+    function renderTableauxHTML(node) {
+        let formulasHtml = node.formulas.map(f => `
+            <div class="tree-formula" title="Origin: ${f.origin}">${f.node.toString()}</div>
+        `).join('');
+
+        let childrenHtml = '';
+        if (node.children.length > 0) {
+            childrenHtml = `
+                <div class="tree-branches">
+                    ${node.children.map(child => `
+                        <div class="tree-branch">
+                            ${renderTableauxHTML(child)}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } else {
+            // Leaf node status
+            const statusClass = node.closed ? 'status-closed' : 'status-open';
+            const statusIcon = node.closed ? '✕' : '◯';
+            const statusText = node.closed ? `Closed by ${node.closedBy[0]}, ${node.closedBy[1]}` : 'Open (Countermodel Found)';
+            childrenHtml = `<div class="tree-status ${statusClass}" title="${statusText}">${statusIcon}</div>`;
+        }
+
+        return `
+            <div class="tree-node-group">
+                <div class="tree-labels">
+                    ${formulasHtml}
+                </div>
+                ${childrenHtml}
+            </div>
+        `;
+    }
 
     // === 5. FOL Inference Engine ===
     const folPremises = document.getElementById('fol-premises');
@@ -198,13 +303,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     folSolve.addEventListener('click', () => {
         try {
-            const premises = folPremises.value.split('\n').filter(l => l.trim());
+            const premises = folPremises.value.split('\n').map(l => l.trim()).filter(l => l);
             const query = folQuery.value.trim();
+            if (!query) throw new Error("Please enter a query to derive.");
+
             const { proved, steps } = engine.folInference(premises, query);
             
-            let html = `<div class="card ${proved ? 'badge-success' : 'badge-error'}" style="margin-bottom:1rem;">
-                            <h2>${proved ? '✓ Derived' : '✗ Could Not Derive'}</h2>
-                        </div>`;
+            let html = `
+                <div class="card ${proved ? 'badge-success' : 'badge-error'}" style="margin-bottom:1.5rem;">
+                    <h2 style="color:inherit; font-size:1.5rem;">${proved ? '✓ Successfully Derived' : '✗ Could Not Derive'}</h2>
+                    <p style="opacity:0.8; font-size:0.9rem;">Using Forward Chaining Inference</p>
+                </div>`;
             
             html += '<div class="explanation-steps">';
             steps.forEach((step, i) => {
@@ -212,41 +321,54 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="step-card">
                         <h3>Inference Step ${i + 1}: ${step.rule}</h3>
                         <div class="step-item">
-                            <span class="step-label">From</span>
-                            <div class="step-content">${step.from}</div>
+                            <span class="step-label">Knowledge Base Matches</span>
+                            <div class="step-content" style="font-size:0.8rem; opacity:0.8;">${step.from}</div>
                         </div>
-                        <div class="step-item">
+                        <div class="step-item" style="border-left-color: var(--success)">
                             <span class="step-label">Derived Fact</span>
-                            <div class="step-content" style="color:var(--primary-bright)">${step.result}</div>
+                            <div class="step-content" style="color:var(--success); font-weight:700;">${step.result}</div>
                         </div>
                     </div>`;
             });
             if (steps.length === 0) {
-                html += `<div class="card">No new facts could be derived using the current rules.</div>`;
+                html += `<div class="card" style="text-align:center; padding:2rem; border-style: dashed;">
+                            <p style="color:var(--text-muted);">No new facts could be derived using the current rules and facts.</p>
+                         </div>`;
             }
             html += '</div>';
             renderOutput('fol-output', html);
         } catch (e) {
-            renderOutput('fol-output', `<div class="error-msg">Error: ${e.message}</div>`);
+            renderOutput('fol-output', `<div class="error-msg">✕ ${e.message}</div>`);
         }
     });
 
     // === Example Buttons ===
-    document.getElementById('tt-eg-btn').addEventListener('click', () => { ttInp.value = '(P → Q) ∧ (Q → R)'; });
-    document.getElementById('simp-eg-btn').addEventListener('click', () => { simpInp.value = '¬(¬P ∨ ¬Q)'; });
-    document.getElementById('eq-eg-btn').addEventListener('click', () => { eqInp1.value = 'P → Q'; eqInp2.value = '¬P ∨ Q'; });
-    document.getElementById('tp-eg-btn').addEventListener('click', () => { tpPremises.value = 'P → Q\nP'; tpConclusion.value = 'Q'; });
+    document.getElementById('tt-eg-btn').addEventListener('click', () => { ttInp.value = '(P → Q) ∧ (Q → R)'; ttInp.focus(); });
+    document.getElementById('simp-eg-btn').addEventListener('click', () => { simpInp.value = '¬(¬P ∨ ¬Q)'; simpInp.focus(); });
+    document.getElementById('eq-eg-btn').addEventListener('click', () => { eqInp1.value = 'P → Q'; eqInp2.value = '¬P ∨ Q'; eqInp1.focus(); });
+    document.getElementById('tp-eg-btn').addEventListener('click', () => { 
+        tpPremises.value = 'P → Q\nQ → R\nP'; 
+        tpConclusion.value = 'R'; 
+        tpPremises.focus();
+    });
     document.getElementById('fol-eg-btn').addEventListener('click', () => { 
         folPremises.value = '∀x (Human(x) → Mortal(x))\nHuman(Socrates)'; 
         folQuery.value = 'Mortal(Socrates)'; 
+        folPremises.focus();
     });
 
     // === Clear Buttons ===
-    document.getElementById('tt-clear-btn').addEventListener('click', () => { ttInp.value = ''; ttOutput.classList.add('hidden'); });
-    document.getElementById('simp-clear-btn').addEventListener('click', () => { simpInp.value = ''; document.getElementById('simp-output').classList.add('hidden'); });
-    document.getElementById('eq-clear-btn').addEventListener('click', () => { eqInp1.value = ''; eqInp2.value = ''; document.getElementById('eq-output').classList.add('hidden'); });
-    document.getElementById('tp-clear-btn').addEventListener('click', () => { tpPremises.value = ''; tpConclusion.value = ''; document.getElementById('tp-output').classList.add('hidden'); });
-    document.getElementById('fol-clear-btn').addEventListener('click', () => { folPremises.value = ''; folQuery.value = ''; document.getElementById('fol-output').classList.add('hidden'); });
+    const clearOutput = (id) => {
+        const out = document.getElementById(id);
+        out.classList.add('hidden');
+        out.innerHTML = '';
+    };
+
+    document.getElementById('tt-clear-btn').addEventListener('click', () => { ttInp.value = ''; clearOutput('tt-output'); });
+    document.getElementById('simp-clear-btn').addEventListener('click', () => { simpInp.value = ''; clearOutput('simp-output'); });
+    document.getElementById('eq-clear-btn').addEventListener('click', () => { eqInp1.value = ''; eqInp2.value = ''; clearOutput('eq-output'); });
+    document.getElementById('tp-clear-btn').addEventListener('click', () => { tpPremises.value = ''; tpConclusion.value = ''; clearOutput('tp-output'); });
+    document.getElementById('fol-clear-btn').addEventListener('click', () => { folPremises.value = ''; folQuery.value = ''; clearOutput('fol-output'); });
 
     // === FOL Guide Clicks ===
     document.querySelectorAll('.guide-item').forEach(item => {
@@ -255,6 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const code = item.querySelector('code').textContent;
             folPremises.value += (folPremises.value ? '\n' : '') + code;
             folPremises.focus();
+            lastFocusedInput = folPremises;
         });
     });
 

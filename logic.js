@@ -43,7 +43,7 @@ class LogicEngine {
 
         const parseIff = () => {
             let node = parseImplies();
-            while (pos < tokens.length && tokens[pos].type === 'iff') {
+            if (pos < tokens.length && tokens[pos].type === 'iff') {
                 pos++;
                 node = new LogicNode('iff', null, [node, parseIff()]);
             }
@@ -52,7 +52,7 @@ class LogicEngine {
 
         const parseImplies = () => {
             let node = parseOr();
-            while (pos < tokens.length && tokens[pos].type === 'implies') {
+            if (pos < tokens.length && tokens[pos].type === 'implies') {
                 pos++;
                 node = new LogicNode('implies', null, [node, parseImplies()]);
             }
@@ -273,7 +273,7 @@ class LogicEngine {
 
         let newClauses = [...clauses];
         let steps = 0;
-        const maxSteps = 100;
+        const maxSteps = 500;
 
         while (steps < maxSteps) {
             let pairs = [];
@@ -347,6 +347,7 @@ class LogicEngine {
 
         const rows = [];
         const numRows = Math.pow(2, varList.length);
+        if (numRows > 16384) throw new Error(`Too many variables (${varList.length}). Maximum 14 variables allowed for truth tables.`);
 
         for (let i = numRows - 1; i >= 0; i--) {
             const values = {};
@@ -570,8 +571,7 @@ class LogicEngine {
                 changed = true;
             }
 
-            // 3. Identity & Annihilation (Basic T/F rules would go here if we had T/F constants)
-            // For now, let's implement basic idempotent laws: A & A -> A, A | A -> A
+            // 3. Idempotent laws: A & A -> A, A | A -> A
             next = this.applyIdempotent(current);
             if (next.toString() !== current.toString()) {
                 current = next;
@@ -586,9 +586,35 @@ class LogicEngine {
                 logStep("Absorption Law", current);
                 changed = true;
             }
+
+            // 5. Identity & Annihilation: A & T -> A, A | F -> A, etc.
+            next = this.applyIdentity(current);
+            if (next.toString() !== current.toString()) {
+                current = next;
+                logStep("Identity Law", current);
+                changed = true;
+            }
         }
 
         return { result: current.toString(), steps };
+    }
+
+    applyIdentity(node) {
+        if (node.type === 'and') {
+            const [L, R] = node.children;
+            if (L.value === 'T' || L.value === 'TRUE') return this.applyIdentity(R);
+            if (R.value === 'T' || R.value === 'TRUE') return this.applyIdentity(L);
+            if (L.value === 'F' || L.value === 'FALSE') return new LogicNode('variable', 'F');
+            if (R.value === 'F' || R.value === 'FALSE') return new LogicNode('variable', 'F');
+        }
+        if (node.type === 'or') {
+            const [L, R] = node.children;
+            if (L.value === 'F' || L.value === 'FALSE') return this.applyIdentity(R);
+            if (R.value === 'F' || R.value === 'FALSE') return this.applyIdentity(L);
+            if (L.value === 'T' || L.value === 'TRUE') return new LogicNode('variable', 'T');
+            if (R.value === 'T' || R.value === 'TRUE') return new LogicNode('variable', 'T');
+        }
+        return new LogicNode(node.type, node.value, node.children.map(c => this.applyIdentity(c)));
     }
 
     applyDoubleNegation(node) {
@@ -639,7 +665,6 @@ class LogicEngine {
     }
 
     // --- FOL Inference Engine (Simplified) ---
-    // Support: ∀x (P(x) → Q(x)), P(A) ⊢ Q(A)
     folInference(premises, query) {
         const facts = new Set();
         const rules = [];
@@ -663,48 +688,89 @@ class LogicEngine {
             iter++;
 
             for (const rule of rules) {
-                // Simplified Regex for ∀x (P(x) → Q(x))
-                const universalMatch = rule.match(/∀([a-z])\s*\((.*)\s*→\s*(.*)\)/);
+                const universalMatch = rule.match(/∀([a-z])\s*(.*)$/);
                 if (universalMatch) {
-                    const [_, variable, antecedent, consequent] = universalMatch;
-                    
-                    // Look for facts that match the antecedent via Universal Instantiation
-                    for (const fact of facts) {
-                        const predMatch = antecedent.match(/([A-Z][a-z]*)\(([a-z])\)/);
-                        const factMatch = fact.match(/([A-Z][a-z]*)\(([A-Z][a-z]*)\)/);
+                    const [_, variable, body] = universalMatch;
+                    let cleanBody = body.trim();
+                    if (cleanBody.startsWith('(') && cleanBody.endsWith(')')) {
+                        cleanBody = cleanBody.substring(1, cleanBody.length - 1).trim();
+                    }
+
+                    const arrowMatch = cleanBody.match(/^(.*?)\s*[→→>]\s*(.*?)$/);
+                    if (arrowMatch) {
+                        const antecedent = arrowMatch[1].trim();
+                        const consequent = arrowMatch[2].trim();
                         
-                        if (predMatch && factMatch && predMatch[1] === factMatch[1] && predMatch[2] === variable) {
-                            const constant = factMatch[2];
-                            // Substitute variable with constant in consequent
-                            const derived = consequent.replace(new RegExp(`\\b${variable}\\b`, 'g'), constant);
-                            if (!facts.has(derived)) {
-                                facts.add(derived);
-                                steps.push({
-                                    rule: "Universal Instantiation + Modus Ponens",
-                                    from: `${rule} and ${fact}`,
-                                    result: derived
-                                });
-                                changed = true;
+                        const stripOuter = (s) => {
+                            let res = s;
+                            if (res.startsWith('(') && res.endsWith(')')) {
+                                res = res.substring(1, res.length - 1).trim();
+                            }
+                            return res;
+                        };
+                        const antClean = stripOuter(antecedent);
+                        const consClean = stripOuter(consequent);
+                        
+                        for (const fact of facts) {
+                            const factMatch = fact.match(/^([A-Z][a-zA-Z0-9]*)\((.*)\)$/);
+                            if (!factMatch) continue;
+                            
+                            const factPred = factMatch[1];
+                            const factArgs = factMatch[2].split(',').map(s => s.trim());
+
+                            const antMatch = antClean.match(/^([A-Z][a-zA-Z0-9]*)\((.*)\)$/);
+                            if (antMatch) {
+                                const antPred = antMatch[1];
+                                const antArgs = antMatch[2].split(',').map(s => s.trim());
+
+                                if (antPred === factPred && antArgs.length === factArgs.length) {
+                                    let canUnify = true;
+                                    const substitution = {};
+                                    for (let i = 0; i < antArgs.length; i++) {
+                                        if (antArgs[i] === variable) {
+                                            substitution[variable] = factArgs[i];
+                                        } else if (antArgs[i] !== factArgs[i]) {
+                                            canUnify = false;
+                                            break;
+                                        }
+                                    }
+
+                                    if (canUnify) {
+                                        let derived = consClean;
+                                        for (const [v, c] of Object.entries(substitution)) {
+                                            derived = derived.replace(new RegExp(`\\b${v}\\b`, 'g'), c);
+                                        }
+                                        if (!facts.has(derived)) {
+                                            facts.add(derived);
+                                            steps.push({
+                                                rule: "Universal Instantiation + Modus Ponens",
+                                                from: `${rule} and ${fact}`,
+                                                result: derived
+                                            });
+                                            changed = true;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-                
-                // Modus Ponens: P → Q, P ⊢ Q
-                const mpMatch = rule.match(/(.*)\s*→\s*(.*)/);
-                if (mpMatch && !rule.startsWith('∀')) {
-                    const [_, ant, cons] = mpMatch;
-                    const antClean = ant.trim().replace(/^\(|\)$/g, '');
-                    const consClean = cons.trim().replace(/^\(|\)$/g, '');
-                    
-                    if (facts.has(antClean) && !facts.has(consClean)) {
-                        facts.add(consClean);
-                        steps.push({
-                            rule: "Modus Ponens",
-                            from: `${rule} and ${antClean}`,
-                            result: consClean
-                        });
-                        changed = true;
+                } else {
+                    // Standard Modus Ponens for non-quantified rules
+                    const mpMatch = rule.match(/^(.*?)\s*[→→>]\s*(.*?)$/);
+                    if (mpMatch) {
+                        const [_, ant, cons] = mpMatch;
+                        const antClean = ant.trim().replace(/^\(|\)$/g, '');
+                        const consClean = cons.trim().replace(/^\(|\)$/g, '');
+                        
+                        if (facts.has(antClean) && !facts.has(consClean)) {
+                            facts.add(consClean);
+                            steps.push({
+                                rule: "Modus Ponens",
+                                from: `${rule} and ${antClean}`,
+                                result: consClean
+                            });
+                            changed = true;
+                        }
                     }
                 }
             }
@@ -739,4 +805,3 @@ class LogicEngine {
 }
 
 window.LogicEngine = LogicEngine;
-
