@@ -15,7 +15,23 @@
 <!-- Animated background grid -->
 <div class="bg-decor"></div>
 
-<div class="app-container">
+<!-- Splash Screen / Landing Page -->
+<div id="splash-screen" class="splash-screen">
+    <div class="splash-content">
+        <div class="splash-logo">⊢</div>
+        <h1 class="splash-title">Logic <span>Theorem</span> Solver</h1>
+        <p class="splash-subtitle">A Symbolic AI Engine for Propositional & First-Order Logic</p>
+        <div class="splash-features">
+            <span class="feat-badge">⊨ Truth Tables</span>
+            <span class="feat-badge">⟹ Simplification</span>
+            <span class="feat-badge">≡ Equivalence</span>
+            <span class="feat-badge">∀ FOL Inference</span>
+        </div>
+        <button id="enter-app-btn" class="btn btn-primary splash-btn">Launch Engine <span class="arrow">→</span></button>
+    </div>
+</div>
+
+<div class="app-container" id="main-app" style="display: none; opacity: 0; transition: opacity 0.5s ease-in;">
 
     <!-- ═══════════════════════════════════════ HEADER ═══ -->
     <header>
@@ -47,6 +63,13 @@
             <div>
                 <strong>First-Order Logic</strong>
                 <small>Predicates · Quantifiers · Inference</small>
+            </div>
+        </button>
+        <button class="module-btn" data-module="code" role="tab" aria-selected="false">
+            <span class="mod-icon">&lt;/&gt;</span>
+            <div>
+                <strong>Code &amp; Comparison</strong>
+                <small>Engine Architecture · Implementation</small>
             </div>
         </button>
     </nav>
@@ -265,6 +288,75 @@
                 <div id="fol-output" class="output-area hidden"></div>
             </div>
 
+        </section>
+
+        <!-- ══════════════════════════════════════════════════════════
+             CODE COMPARISON MODULE
+             ══════════════════════════════════════════════════════════ -->
+        <section id="code-module" class="module-section hidden" aria-label="Code Comparison">
+            <h2 class="code-title">Code & Comparison</h2>
+            
+            <div class="code-grid">
+                <!-- PL Card -->
+                <div class="code-card">
+                    <div class="code-header">Propositional Logic: Resolution (JavaScript)</div>
+                    <pre class="code-block"><code><span class="kw">function</span> <span class="fn">resolve</span>(premises, conclusion) {
+  <span class="kw">let</span> clauses = premises.<span class="fn">map</span>(p =&gt; <span class="fn">toCNF</span>(p));
+  clauses.<span class="fn">push</span>(<span class="fn">toCNF</span>(<span class="str">`~(${conclusion})`</span>));
+
+  <span class="kw">let</span> newClauses = [];
+  <span class="kw">while</span> (<span class="kw">true</span>) {
+    <span class="kw">for</span> (<span class="kw">let</span> i = <span class="num">0</span>; i &lt; clauses.length; i++) {
+      <span class="kw">for</span> (<span class="kw">let</span> j = i + <span class="num">1</span>; j &lt; clauses.length; j++) {
+        
+        <span class="com">// Search for P and ~P</span>
+        <span class="kw">let</span> resolvents = <span class="fn">resolvePair</span>(clauses[i], clauses[j]);
+        
+        <span class="kw">for</span> (<span class="kw">let</span> res <span class="kw">of</span> resolvents) {
+          <span class="kw">if</span> (res.length === <span class="num">0</span>) {
+            <span class="kw">return true</span>; <span class="com">// Contradiction found!</span>
+          }
+          newClauses.<span class="fn">push</span>(res);
+        }
+      }
+    }
+    <span class="kw">if</span> (<span class="fn">isSubset</span>(newClauses, clauses)) <span class="kw">return false</span>;
+    clauses.<span class="fn">push</span>(...newClauses);
+  }
+}</code></pre>
+                </div>
+
+                <!-- FOL Card -->
+                <div class="code-card">
+                    <div class="code-header">First-Order Logic: Forward Chaining (JS)</div>
+                    <pre class="code-block"><code><span class="kw">function</span> <span class="fn">folInference</span>(premises, query) {
+  <span class="kw">let</span> facts = <span class="kw">new</span> <span class="typ">Set</span>();
+  <span class="kw">let</span> rules = [];
+
+  <span class="com">// 1. Skolemization (Existential Instantiation)</span>
+  <span class="kw">for</span> (<span class="kw">let</span> p <span class="kw">of</span> premises) {
+    <span class="kw">if</span> (p.<span class="fn">startsWith</span>(<span class="str">'∃'</span>)) {
+      <span class="kw">const</span> c = <span class="str">`C${counter++}`</span>;
+      facts.<span class="fn">add</span>(p.body.<span class="fn">replace</span>(p.var, c));
+    } <span class="kw">else</span> {
+      rules.<span class="fn">push</span>(p);
+    }
+  }
+  
+  <span class="com">// 2. Forward Chaining (Modus Ponens)</span>
+  <span class="kw">while</span> (changed) {
+    <span class="kw">for</span> (<span class="kw">let</span> rule <span class="kw">of</span> rules) {
+      <span class="kw">if</span> (<span class="fn">unify</span>(rule.antecedent, facts)) {
+        facts.<span class="fn">add</span>(rule.consequent);
+      }
+    }
+  }
+
+  <span class="com">// 3. Existential Generalization</span>
+  <span class="kw">return</span> <span class="fn">matchQuery</span>(query, facts);
+}</code></pre>
+                </div>
+            </div>
         </section>
 
     </main>

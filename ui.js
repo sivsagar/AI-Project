@@ -5,6 +5,23 @@
 document.addEventListener('DOMContentLoaded', () => {
     const engine = new window.LogicEngine();
 
+    // === Splash Screen Logic ===
+    const splashScreen = document.getElementById('splash-screen');
+    const enterAppBtn = document.getElementById('enter-app-btn');
+    const mainApp = document.getElementById('main-app');
+
+    enterAppBtn.addEventListener('click', () => {
+        splashScreen.style.opacity = '0';
+        splashScreen.style.visibility = 'hidden';
+        setTimeout(() => {
+            splashScreen.style.display = 'none';
+            mainApp.style.display = 'block';
+            setTimeout(() => {
+                mainApp.style.opacity = '1';
+            }, 50);
+        }, 600);
+    });
+
     // === Global State ===
     let lastFocusedInput = document.getElementById('tt-expr');
 
